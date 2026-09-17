@@ -5,8 +5,10 @@ CSV, a comparison table, and a pass-rate bar chart to results/.
 Usage:
     python scripts/run_benchmark.py
 
-Requires ANTHROPIC_API_KEY, loaded from a local .env file if present.
-Override the model with the BENCHMARK_MODEL environment variable.
+Requires an API key for the configured provider (ANTHROPIC_API_KEY or
+GEMINI_API_KEY), loaded from a local .env file if present. Select the
+provider with BENCHMARK_PROVIDER ("anthropic" or "gemini", default
+"gemini") and override the model with BENCHMARK_MODEL.
 """
 
 from __future__ import annotations
@@ -23,8 +25,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from agent.anthropic_llm import AnthropicLLM
 from agent.dfsdt import DFSDTAgent
+from agent.llm import BaseLLM
 from agent.react import ReActAgent
 from apis.registry import keyless_registry
 from eval.llm_judge import LLMJudge
@@ -32,7 +34,19 @@ from eval.report import write_benchmark_csv, write_comparison_table, write_pass_
 
 _DATA_PATH = _ROOT / "data" / "benchmark_instructions.json"
 _RESULTS_DIR = _ROOT / "results"
-_MODEL = os.environ.get("BENCHMARK_MODEL", "claude-haiku-4-5-20251001")
+_PROVIDER = os.environ.get("BENCHMARK_PROVIDER", "gemini")
+
+
+def _build_llm() -> BaseLLM:
+    if _PROVIDER == "anthropic":
+        from agent.anthropic_llm import AnthropicLLM
+
+        return AnthropicLLM(model=os.environ.get("BENCHMARK_MODEL", "claude-haiku-4-5-20251001"))
+    if _PROVIDER == "gemini":
+        from agent.gemini_llm import GeminiLLM
+
+        return GeminiLLM(model=os.environ.get("BENCHMARK_MODEL", "gemini-3.5-flash-lite"))
+    raise ValueError(f"Unknown BENCHMARK_PROVIDER '{_PROVIDER}' (expected 'anthropic' or 'gemini').")
 
 
 def _run_and_judge(agent, instruction: str, apis: list, judge: LLMJudge) -> dict:
@@ -54,9 +68,9 @@ def main() -> None:
     registry = keyless_registry()
     apis = registry.all()
 
-    react_agent = ReActAgent(registry=registry, llm=AnthropicLLM(model=_MODEL))
-    dfsdt_agent = DFSDTAgent(registry=registry, llm=AnthropicLLM(model=_MODEL))
-    judge = LLMJudge(llm=AnthropicLLM(model=_MODEL))
+    react_agent = ReActAgent(registry=registry, llm=_build_llm())
+    dfsdt_agent = DFSDTAgent(registry=registry, llm=_build_llm())
+    judge = LLMJudge(llm=_build_llm())
 
     rows = []
     for item in instructions:
