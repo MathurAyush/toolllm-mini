@@ -14,7 +14,12 @@ win-rate metrics.
   `BaseAPI` interface (`name`, `description`, `parameters`, `call`) so
   new tools can be registered without touching the rest of the system.
   Ships with a calculator, a mock weather lookup, and a small local
-  search tool as examples.
+  search tool as offline examples, plus wrappers around eight free
+  public APIs: OpenWeatherMap, Frankfurter (currency exchange),
+  Wikipedia summaries, NewsAPI, JokeAPI, Quotable (quotes), the Free
+  Dictionary API, and REST Countries. Each wrapper's docstring
+  documents its name, description, required parameters, and an example
+  response.
 - `retriever/` — API retrieval logic. A lightweight TF-IDF based
   retriever ranks the registered APIs by relevance to a given
   instruction and returns the top-k candidates for the agent to
