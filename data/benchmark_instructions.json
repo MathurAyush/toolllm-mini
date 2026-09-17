@@ -1,0 +1,116 @@
+[
+  {
+    "id": "bench-01",
+    "instruction": "What is 23 times 17?",
+    "complexity": "easy",
+    "expected_apis": ["calculator"]
+  },
+  {
+    "id": "bench-02",
+    "instruction": "What's the weather like in Paris right now?",
+    "complexity": "easy",
+    "expected_apis": ["weather"]
+  },
+  {
+    "id": "bench-03",
+    "instruction": "Convert 100 US dollars to Euros.",
+    "complexity": "easy",
+    "expected_apis": ["currency_exchange"]
+  },
+  {
+    "id": "bench-04",
+    "instruction": "Give me a short summary of the Wikipedia page for 'Python (programming language)'.",
+    "complexity": "easy",
+    "expected_apis": ["wikipedia_summary"]
+  },
+  {
+    "id": "bench-05",
+    "instruction": "Tell me a random joke.",
+    "complexity": "easy",
+    "expected_apis": ["joke"]
+  },
+  {
+    "id": "bench-06",
+    "instruction": "Give me an inspirational quote.",
+    "complexity": "easy",
+    "expected_apis": ["random_quote"]
+  },
+  {
+    "id": "bench-07",
+    "instruction": "What does the word 'ubiquitous' mean?",
+    "complexity": "easy",
+    "expected_apis": ["dictionary"]
+  },
+  {
+    "id": "bench-08",
+    "instruction": "What is the capital of Japan?",
+    "complexity": "easy",
+    "expected_apis": ["country_info"]
+  },
+  {
+    "id": "bench-09",
+    "instruction": "Search for information about the Great Wall of China.",
+    "complexity": "easy",
+    "expected_apis": ["search"]
+  },
+  {
+    "id": "bench-10",
+    "instruction": "What is 15 times 4, and then convert that many US dollars to Euros?",
+    "complexity": "medium",
+    "expected_apis": ["calculator", "currency_exchange"]
+  },
+  {
+    "id": "bench-11",
+    "instruction": "What's the weather in Tokyo, and what is the population of Japan?",
+    "complexity": "medium",
+    "expected_apis": ["weather", "country_info"]
+  },
+  {
+    "id": "bench-12",
+    "instruction": "Define the word 'ubiquitous', then give me a short Wikipedia summary of the Python programming language.",
+    "complexity": "medium",
+    "expected_apis": ["dictionary", "wikipedia_summary"]
+  },
+  {
+    "id": "bench-13",
+    "instruction": "Search for facts about the Eiffel Tower, then tell me the population of France.",
+    "complexity": "medium",
+    "expected_apis": ["search", "country_info"]
+  },
+  {
+    "id": "bench-14",
+    "instruction": "What currency does Japan use, and how much is 50 US dollars in that currency?",
+    "complexity": "medium",
+    "expected_apis": ["country_info", "currency_exchange"]
+  },
+  {
+    "id": "bench-15",
+    "instruction": "Tell me a random joke, then define the word 'pun'.",
+    "complexity": "medium",
+    "expected_apis": ["joke", "dictionary"]
+  },
+  {
+    "id": "bench-16",
+    "instruction": "Tell me the capital of Japan, a short Wikipedia summary of that city, and the current weather there.",
+    "complexity": "hard",
+    "expected_apis": ["country_info", "wikipedia_summary", "weather"]
+  },
+  {
+    "id": "bench-17",
+    "instruction": "What is 25 times 4? Also give me a random quote and define the word 'algorithm'.",
+    "complexity": "hard",
+    "expected_apis": ["calculator", "random_quote", "dictionary"]
+  },
+  {
+    "id": "bench-18",
+    "instruction": "What is the capital of France, what's the weather there, and convert 75 US dollars to Euros?",
+    "complexity": "hard",
+    "expected_apis": ["country_info", "weather", "currency_exchange"]
+  },
+  {
+    "id": "bench-19",
+    "instruction": "Search for facts about Mount Fuji, tell me the capital and population of Japan, and tell me a random joke.",
+    "complexity": "hard",
+    "expected_apis": ["search", "country_info", "joke"]
+  }
+]

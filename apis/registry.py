@@ -49,3 +49,17 @@ def full_registry() -> APIRegistry:
     registry.register(DictionaryAPI())
     registry.register(CountryInfoAPI())
     return registry
+
+
+def keyless_registry() -> APIRegistry:
+    """Registry of every API that needs no API key of its own (excludes
+    OpenWeatherMap and NewsAPI), so an agent benchmark only needs an LLM
+    credential to run end to end."""
+    registry = default_registry()
+    registry.register(CurrencyExchangeAPI())
+    registry.register(WikipediaSummaryAPI())
+    registry.register(JokeAPI())
+    registry.register(QuoteAPI())
+    registry.register(DictionaryAPI())
+    registry.register(CountryInfoAPI())
+    return registry

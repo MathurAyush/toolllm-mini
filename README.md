@@ -43,8 +43,14 @@ win-rate metrics.
   solutions to the same instruction (`run_win_rate_eval`), aggregating
   into a pass rate / win rate and saving the per-instruction verdicts
   and rationales to a CSV file.
-- `data/` — Sample instructions and expected keywords used for local
-  evaluation runs.
+- `data/` — Sample instructions and expected keywords for quick local
+  checks, plus `benchmark_instructions.json`: 19 test instructions of
+  varying complexity (`easy`/`medium`/`hard`, needing 1-3 APIs) used by
+  `scripts/run_benchmark.py`.
+- `results/` — Output of `scripts/run_benchmark.py`: a per-instruction
+  CSV (`benchmark_results.csv`), a ReAct-vs-DFSDT pass-rate comparison
+  table (`comparison_table.md`), and a bar chart
+  (`pass_rate_comparison.png`).
 - `tests/` — Unit tests covering the APIs, retriever, agent loops, and
   evaluation utilities.
 
@@ -55,6 +61,14 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 pytest
+```
+
+To run the agents for real (`AnthropicLLM`, `scripts/run_benchmark.py`,
+`scripts/demo_retriever.py`), put an API key in a local `.env` file
+(gitignored):
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ## Design notes

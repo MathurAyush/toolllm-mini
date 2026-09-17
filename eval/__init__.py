@@ -12,6 +12,14 @@ from .llm_judge import (
 )
 from .metrics import judge_pass
 from .pass_rate import EvalCase, pass_rate
+from .report import (
+    BENCHMARK_FIELDNAMES,
+    build_comparison_table,
+    pass_rate_by_complexity,
+    write_benchmark_csv,
+    write_comparison_table,
+    write_pass_rate_bar_chart,
+)
 from .win_rate import Comparison, Verdict, win_rate
 
 __all__ = [
@@ -31,4 +39,10 @@ __all__ = [
     "write_judged_csv",
     "run_pass_rate_eval",
     "run_win_rate_eval",
+    "BENCHMARK_FIELDNAMES",
+    "pass_rate_by_complexity",
+    "write_benchmark_csv",
+    "build_comparison_table",
+    "write_comparison_table",
+    "write_pass_rate_bar_chart",
 ]
