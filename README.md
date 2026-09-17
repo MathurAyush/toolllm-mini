@@ -36,9 +36,13 @@ win-rate metrics.
   depth-first, branching search (capped at depth 4, breadth 3) over
   candidate reasoning paths with backtracking on failed or unproductive
   actions.
-- `eval/` — Evaluation utilities: a pass-rate calculator, a pairwise
-  win-rate calculator, and a simple keyword-based judge for scoring
-  agent answers against expected outputs.
+- `eval/` — Evaluation utilities: a keyword-based `judge_pass` for
+  scoring answers against expected keywords, and an `LLMJudge` that uses
+  a language model to grade a single answer as Pass/Fail/Unsure
+  (`run_pass_rate_eval`) or to pick the better of two candidate
+  solutions to the same instruction (`run_win_rate_eval`), aggregating
+  into a pass rate / win rate and saving the per-instruction verdicts
+  and rationales to a CSV file.
 - `data/` — Sample instructions and expected keywords used for local
   evaluation runs.
 - `tests/` — Unit tests covering the APIs, retriever, agent loops, and
