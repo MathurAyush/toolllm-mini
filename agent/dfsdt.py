@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from apis.registry import APIRegistry
 
+from .anthropic_llm import AnthropicLLM
 from .llm import BaseLLM
 from .parsing import parse_action, parse_args, parse_finish
 from .prompts import build_prompt
@@ -21,20 +22,24 @@ class DFSDTResult:
 class DFSDTAgent:
     """Depth-First Search-based Decision Tree reasoning loop.
 
-    At each node the agent samples up to `branching_factor` candidate next
-    steps from the underlying model, follows the first branch whose action
-    succeeds, and backtracks to the next candidate whenever a branch fails
-    or the depth budget is exhausted before reaching Finish.
+    At each node the agent samples up to `branching_factor` (breadth)
+    candidate next steps from the underlying model, follows the first
+    branch whose action succeeds, and backtracks to try an alternate
+    action whenever a branch fails, looks unproductive (no parseable
+    action), or the depth budget is exhausted before reaching Finish.
+    Capped by default at depth 4 and breadth 3. Defaults to
+    `AnthropicLLM` for the reasoning calls; pass a different `BaseLLM`
+    (e.g. `EchoLLM`) to run offline or in tests.
     """
 
     def __init__(
         self,
-        llm: BaseLLM,
         registry: APIRegistry,
+        llm: BaseLLM | None = None,
         max_depth: int = 4,
-        branching_factor: int = 2,
+        branching_factor: int = 3,
     ) -> None:
-        self._llm = llm
+        self._llm = llm if llm is not None else AnthropicLLM()
         self._registry = registry
         self._max_depth = max_depth
         self._branching_factor = branching_factor

@@ -58,3 +58,12 @@ def test_dfsdt_agent_backtracks_after_failed_branch():
     assert result.success
     assert result.answer == "89"
     assert result.explored_paths == 3
+
+
+def test_dfsdt_agent_defaults_to_depth_4_and_breadth_3():
+    registry = default_registry()
+    llm = EchoLLM(responses=["Thought: still thinking."])
+    agent = DFSDTAgent(llm=llm, registry=registry)
+
+    assert agent._max_depth == 4
+    assert agent._branching_factor == 3
