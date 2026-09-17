@@ -2,9 +2,10 @@ import pytest
 
 from agent.anthropic_llm import AnthropicLLM
 from agent.dfsdt import DFSDTAgent
+from agent.gemini_llm import GeminiLLM
 from agent.llm import EchoLLM
 from agent.react import ReActAgent
-from apis.registry import default_registry
+from apis.registry import default_registry, keyless_registry
 
 
 def test_anthropic_llm_requires_api_key(monkeypatch):
@@ -12,6 +13,13 @@ def test_anthropic_llm_requires_api_key(monkeypatch):
 
     with pytest.raises(RuntimeError):
         AnthropicLLM(api_key=None)
+
+
+def test_gemini_llm_requires_api_key(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError):
+        GeminiLLM(api_key=None)
 
 
 def test_react_agent_uses_calculator_and_finishes():
@@ -67,3 +75,37 @@ def test_dfsdt_agent_defaults_to_depth_4_and_breadth_3():
 
     assert agent._max_depth == 4
     assert agent._branching_factor == 3
+
+
+def test_react_agent_survives_api_call_missing_required_argument():
+    registry = keyless_registry()
+    llm = EchoLLM(
+        responses=[
+            "Action: currency_exchange[100]",
+            "Finish[done]",
+        ]
+    )
+    agent = ReActAgent(llm=llm, registry=registry, max_steps=3)
+
+    result = agent.run("Convert money.", candidate_apis=registry.all())
+
+    assert result.success
+    assert result.answer == "done"
+    assert result.steps[0].observation.startswith("Error:")
+
+
+def test_dfsdt_agent_backtracks_on_api_call_missing_required_argument():
+    registry = keyless_registry()
+    llm = EchoLLM(
+        responses=[
+            "Action: currency_exchange[100]",
+            "Action: calculator[2 + 2]",
+            "Finish[4]",
+        ]
+    )
+    agent = DFSDTAgent(llm=llm, registry=registry, max_depth=3, branching_factor=2)
+
+    result = agent.run("Do some math.", candidate_apis=registry.all())
+
+    assert result.success
+    assert result.answer == "4"

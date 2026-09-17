@@ -30,12 +30,12 @@ win-rate metrics.
   semantic retriever on the sample instructions.
 - `agent/` — The reasoning loop. Includes a pluggable `BaseLLM`
   interface — `AnthropicLLM` (the default, backed by the Anthropic
-  Messages API) for real usage, and a deterministic `EchoLLM` for local
-  development and tests — a `ReActAgent` implementing the
-  Thought/Action/Observation loop, and a `DFSDTAgent` implementing a
-  depth-first, branching search (capped at depth 4, breadth 3) over
-  candidate reasoning paths with backtracking on failed or unproductive
-  actions.
+  Messages API) and `GeminiLLM` (backed by the Google Gemini API) for
+  real usage, and a deterministic `EchoLLM` for local development and
+  tests — a `ReActAgent` implementing the Thought/Action/Observation
+  loop, and a `DFSDTAgent` implementing a depth-first, branching search
+  (capped at depth 4, breadth 3) over candidate reasoning paths with
+  backtracking on failed or unproductive actions.
 - `eval/` — Evaluation utilities: a keyword-based `judge_pass` for
   scoring answers against expected keywords, and an `LLMJudge` that uses
   a language model to grade a single answer as Pass/Fail/Unsure
@@ -63,12 +63,14 @@ pip install -r requirements.txt
 pytest
 ```
 
-To run the agents for real (`AnthropicLLM`, `scripts/run_benchmark.py`,
+To run the agents for real (`scripts/run_benchmark.py`,
 `scripts/demo_retriever.py`), put an API key in a local `.env` file
 (gitignored):
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...
+GEMINI_API_KEY=...
+BENCHMARK_PROVIDER=gemini  # or "anthropic"; picks which key run_benchmark.py uses
 ```
 
 ## Design notes

@@ -86,7 +86,10 @@ class DFSDTAgent:
                 continue
 
             kwargs = parse_args(raw_args, api)
-            result = api.call(**kwargs)
+            try:
+                result = api.call(**kwargs)
+            except Exception:
+                continue
             if not result.success:
                 continue
 

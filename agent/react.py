@@ -65,8 +65,11 @@ class ReActAgent:
                     observation = f"Error: unknown API '{api_name}'."
                 else:
                     kwargs = parse_args(raw_args, api)
-                    result = api.call(**kwargs)
-                    observation = str(result.data) if result.success else f"Error: {result.error}"
+                    try:
+                        result = api.call(**kwargs)
+                        observation = str(result.data) if result.success else f"Error: {result.error}"
+                    except Exception as exc:
+                        observation = f"Error: {exc}"
                 history += f"Observation: {observation}\n"
                 steps.append(Step(thought_or_action=response, observation=observation))
             else:
