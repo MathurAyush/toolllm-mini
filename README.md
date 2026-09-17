@@ -20,10 +20,14 @@ win-rate metrics.
   Dictionary API, and REST Countries. Each wrapper's docstring
   documents its name, description, required parameters, and an example
   response.
-- `retriever/` — API retrieval logic. A lightweight TF-IDF based
-  retriever ranks the registered APIs by relevance to a given
-  instruction and returns the top-k candidates for the agent to
-  consider.
+- `retriever/` — API retrieval logic. `APIRetriever` ranks registered
+  APIs by relevance to a given instruction and returns the top-k
+  candidates for the agent to consider, using a pluggable text
+  embedder: `TfidfEmbedder` (default) or `SentenceTransformerEmbedder`
+  for semantic, embedding-based retrieval. `KeywordMatchRetriever`
+  provides a no-embeddings, keyword-overlap baseline for comparison.
+  `scripts/demo_retriever.py` compares the keyword baseline against the
+  semantic retriever on the sample instructions.
 - `agent/` — The reasoning loop. Includes a pluggable `BaseLLM`
   interface (with a deterministic `EchoLLM` for local development and
   tests), a `ReActAgent` implementing the Thought/Action/Observation

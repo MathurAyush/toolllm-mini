@@ -1,24 +1,21 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from apis.base import BaseAPI
 
 from .embedder import TfidfEmbedder
-
-
-@dataclass
-class RetrievedAPI:
-    api: BaseAPI
-    score: float
+from .types import RetrievedAPI
 
 
 class APIRetriever:
-    """Ranks registered APIs by relevance to a natural language instruction."""
+    """Ranks registered APIs by relevance to a natural language instruction
+    using a pluggable text embedder. Defaults to TF-IDF; pass an
+    `embedder` implementing `fit(corpus)` / `similarity(query)` (such as
+    `SentenceTransformerEmbedder`) to rank by semantic similarity instead.
+    """
 
-    def __init__(self, apis: list[BaseAPI]) -> None:
+    def __init__(self, apis: list[BaseAPI], embedder=None) -> None:
         self._apis = apis
-        self._embedder = TfidfEmbedder()
+        self._embedder = embedder if embedder is not None else TfidfEmbedder()
         corpus = [f"{api.name} {api.description}" for api in apis]
         self._embedder.fit(corpus)
 
