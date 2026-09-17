@@ -1,0 +1,1 @@
+When committing to git, never add a 'Co-Authored-By: Claude' trailer or any mention of Claude, Anthropic, or AI-assisted generation in commit messages, README files, code comments, or any other file in this repository. Write all commit messages and documentation as if the repository owner wrote them personally.

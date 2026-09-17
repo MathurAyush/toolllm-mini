@@ -1,0 +1,17 @@
+[
+  {
+    "id": "instr-001",
+    "instruction": "What is 12 times 7, plus 5?",
+    "expected_keywords": ["89"]
+  },
+  {
+    "id": "instr-002",
+    "instruction": "What is the current weather in Tokyo?",
+    "expected_keywords": ["clear"]
+  },
+  {
+    "id": "instr-003",
+    "instruction": "Where is the Eiffel Tower located?",
+    "expected_keywords": ["paris"]
+  }
+]
