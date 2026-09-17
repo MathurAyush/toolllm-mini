@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from apis.registry import APIRegistry
 
+from .anthropic_llm import AnthropicLLM
 from .llm import BaseLLM
 from .parsing import parse_action, parse_args, parse_finish
 from .prompts import build_prompt
@@ -23,10 +24,21 @@ class ReActResult:
 
 
 class ReActAgent:
-    """Thought / Action / Observation reasoning loop over a set of APIs."""
+    """Thought / Action / Observation reasoning loop over a set of APIs.
 
-    def __init__(self, llm: BaseLLM, registry: APIRegistry, max_steps: int = 6) -> None:
-        self._llm = llm
+    Repeats Thought -> Action (API call) -> Observation until the model
+    emits Finish[...] or `max_steps` is exhausted. Defaults to
+    `AnthropicLLM` for the reasoning calls; pass a different `BaseLLM`
+    (e.g. `EchoLLM`) to run offline or in tests.
+    """
+
+    def __init__(
+        self,
+        registry: APIRegistry,
+        llm: BaseLLM | None = None,
+        max_steps: int = 6,
+    ) -> None:
+        self._llm = llm if llm is not None else AnthropicLLM()
         self._registry = registry
         self._max_steps = max_steps
 

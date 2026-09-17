@@ -29,10 +29,13 @@ win-rate metrics.
   `scripts/demo_retriever.py` compares the keyword baseline against the
   semantic retriever on the sample instructions.
 - `agent/` — The reasoning loop. Includes a pluggable `BaseLLM`
-  interface (with a deterministic `EchoLLM` for local development and
-  tests), a `ReActAgent` implementing the Thought/Action/Observation
-  loop, and a `DFSDTAgent` implementing a depth-first, branching search
-  over candidate reasoning paths with backtracking on failed actions.
+  interface — `AnthropicLLM` (the default, backed by the Anthropic
+  Messages API) for real usage, and a deterministic `EchoLLM` for local
+  development and tests — a `ReActAgent` implementing the
+  Thought/Action/Observation loop, and a `DFSDTAgent` implementing a
+  depth-first, branching search (capped at depth 4, breadth 3) over
+  candidate reasoning paths with backtracking on failed or unproductive
+  actions.
 - `eval/` — Evaluation utilities: a pass-rate calculator, a pairwise
   win-rate calculator, and a simple keyword-based judge for scoring
   agent answers against expected outputs.

@@ -1,7 +1,17 @@
+import pytest
+
+from agent.anthropic_llm import AnthropicLLM
 from agent.dfsdt import DFSDTAgent
 from agent.llm import EchoLLM
 from agent.react import ReActAgent
 from apis.registry import default_registry
+
+
+def test_anthropic_llm_requires_api_key(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError):
+        AnthropicLLM(api_key=None)
 
 
 def test_react_agent_uses_calculator_and_finishes():
