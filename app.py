@@ -349,7 +349,7 @@ with tab_run:
     st.caption("Try an example:")
     ex_cols = st.columns(len(EXAMPLE_QUESTIONS))
     for col, example in zip(ex_cols, EXAMPLE_QUESTIONS):
-        if col.button(example, key=f"ex_{example}", use_container_width=True):
+        if col.button(example, key=f"ex_{example}", width="stretch"):
             st.session_state.question = example
             st.rerun()
 
@@ -413,10 +413,10 @@ with tab_dashboard:
         st.info("No comparison_table.md found in results/ yet — run the benchmark first.")
 
     if os.path.exists(chart_path):
-        st.image(chart_path, caption="Pass rate comparison: ReAct vs DFSDT", use_container_width=True)
+        st.image(chart_path, caption="Pass rate comparison: ReAct vs DFSDT", width="stretch")
     else:
         st.info("No pass_rate_comparison.png found in results/ yet.")
 
     if os.path.exists(csv_path):
         with st.expander("Raw benchmark results"):
-            st.dataframe(pd.read_csv(csv_path), use_container_width=True)
+            st.dataframe(pd.read_csv(csv_path), width="stretch")
