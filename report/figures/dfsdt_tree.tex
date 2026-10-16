@@ -1,0 +1,25 @@
+% How our DFSDTAgent._search walks the tree (drawn by us).
+\begin{tikzpicture}[
+    font=\scriptsize,
+    every node/.style={draw, circle, minimum size=5.5mm, inner sep=0pt},
+    ok/.style={fill=green!15},
+    bad/.style={fill=red!15},
+    fin/.style={fill=blue!15, rectangle, rounded corners=2pt, minimum width=8mm},
+    level distance=10mm,
+    level 1/.style={sibling distance=17mm},
+    level 2/.style={sibling distance=11mm},
+    edge from parent/.style={draw, -{Stealth[length=1.5mm]}}
+  ]
+  \node (root) {$d{=}0$}
+    child { node[bad] (a) {1} }
+    child { node[ok] (b) {2}
+      child { node[bad] (c) {3} }
+      child { node[fin] (d) {4: Finish} }
+    }
+    child { node[draw=gray, dashed, text=gray] {--} };
+  \draw[-{Stealth[length=1.5mm]}, dashed, red!70!black]
+    (a.east) -- (b.west);
+  \node[draw=none, red!70!black, align=center, below=2mm of a] {failed call:\\ sample the\\ next sibling};
+  \node[draw=none, anchor=west, text width=2.2cm, align=left] at ([xshift=4mm]d.east)
+    {numbers give the order in which \texttt{explored\_paths} is incremented};
+\end{tikzpicture}

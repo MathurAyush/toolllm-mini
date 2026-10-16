@@ -1,0 +1,40 @@
+% System architecture of our project (drawn by us, not taken from any paper).
+\begin{tikzpicture}[
+    font=\scriptsize,
+    box/.style={draw, rounded corners=2pt, align=center, minimum height=1.0cm, inner sep=3pt, fill=#1},
+    box/.default=white,
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    lbl/.style={font=\scriptsize\itshape, align=center, fill=white, inner sep=1pt},
+    node distance=6mm and 9mm
+  ]
+  % entry points
+  \node[box=gray!10, text width=3.3cm] (ui) {\textbf{Entry points}\\ \texttt{app.py} (Streamlit)\\ \texttt{scripts/ask.py}\\ \texttt{scripts/run\_benchmark.py}};
+
+  % retrieval
+  \node[box=blue!8, text width=3.9cm, right=13mm of ui] (ret) {\textbf{APIRetriever}\\ TfidfEmbedder (default)\\ SentenceTransformerEmbedder\\ KeywordMatchRetriever (baseline)};
+  \node[box=blue!8, text width=3.9cm, above=of ret] (reg) {\textbf{APIRegistry}\\ \texttt{keyless\_registry()}: 9 tools,\\ each a \texttt{BaseAPI} subclass};
+
+  % agents
+  \node[box=orange!12, text width=3.0cm, right=of ret] (agent) {\textbf{Agent loop}\\ ReActAgent (max 6 steps)\\ or DFSDTAgent\\ (depth 4, breadth 3)};
+  \node[box=orange!12, text width=3.0cm, above=of agent] (llm) {\textbf{BaseLLM}\\ GeminiLLM / AnthropicLLM\\ EchoLLM (tests)};
+
+  % tools
+  \node[box=green!10, text width=2.8cm, right=17mm of agent] (tools) {\textbf{Tool execution}\\ \texttt{parse\_action}\\ \texttt{parse\_args}\\ \texttt{api.call(**kwargs)}};
+  \node[box=green!10, text width=2.8cm, above=of tools] (ext) {\textbf{Tools}\\ 3 offline mocks +\\ 6 free web APIs};
+
+  % evaluation
+  \node[box=purple!10, text width=3.0cm, below=of agent] (judge) {\textbf{LLMJudge}\\ Pass / Fail / Unsure\\ with a one-line rationale};
+  \node[box=purple!10, text width=2.8cm, right=of judge] (res) {\textbf{results/}\\ CSV, Markdown table,\\ bar chart};
+
+  \draw[arr] (ui) -- node[lbl, above=1pt] {instruction} (ret);
+  \draw[arr] (reg) -- node[lbl, right=1pt] {name +\\description} (ret);
+  \draw[arr] (ret) -- node[lbl, above=1pt] {top-$k$} (agent);
+  \draw[arr] ([xshift=-3mm]agent.north) -- node[lbl, left=1pt] {prompt} ([xshift=-3mm]llm.south);
+  \draw[arr] ([xshift=3mm]llm.south) -- node[lbl, right=1pt] {text} ([xshift=3mm]agent.north);
+  \draw[arr] ([yshift=2mm]agent.east) -- node[lbl, above=1pt] {Action} ([yshift=2mm]tools.west);
+  \draw[arr] ([yshift=-2mm]tools.west) -- node[lbl, below=1pt] {Observation} ([yshift=-2mm]agent.east);
+  \draw[arr, <->] (tools) -- (ext);
+  \draw[arr] (agent) -- node[lbl, right=1pt] {final answer} (judge);
+  \draw[arr] (judge) -- (res);
+  \draw[arr, dashed] (ui.south) -- ++(0,-3mm) -| node[lbl, pos=0.25, below=1pt] {benchmark: all 9 tools, no retrieval} ([xshift=-10mm]agent.south);
+\end{tikzpicture}

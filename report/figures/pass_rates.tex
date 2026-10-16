@@ -1,0 +1,23 @@
+% Provisional pass rates from results/comparison_table.md (run of 18 Sep 2026).
+\begin{tikzpicture}
+  \begin{axis}[
+      ybar=3pt,
+      width=\columnwidth,
+      height=4.6cm,
+      bar width=9pt,
+      ymin=0, ymax=118,
+      ylabel={Pass rate (\%)},
+      symbolic x coords={Easy,Medium,Hard,Overall},
+      xtick=data,
+      nodes near coords,
+      every node near coord/.append style={font=\tiny},
+      tick label style={font=\scriptsize},
+      label style={font=\scriptsize},
+      legend style={font=\scriptsize, at={(0.5,1.02)}, anchor=south, legend columns=2, draw=none},
+      enlarge x limits=0.18,
+    ]
+    \addplot[fill=blue!35, draw=blue!60!black] coordinates {(Easy,89) (Medium,83) (Hard,100) (Overall,89)};
+    \addplot[fill=orange!45, draw=orange!70!black] coordinates {(Easy,89) (Medium,67) (Hard,100) (Overall,84)};
+    \legend{ReAct, DFSDT-inspired}
+  \end{axis}
+\end{tikzpicture}
