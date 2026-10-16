@@ -47,6 +47,22 @@ def test_currency_exchange_success(mock_get):
     assert result.data["converted"] == 0.9231
 
 
+@patch("apis.currency.requests.get")
+def test_currency_exchange_accepts_amount_as_text(mock_get):
+    mock_get.return_value = _mock_response({"rates": {"EUR": 92.0}})
+    result = CurrencyExchangeAPI().call(base="usd", target="eur", amount="100")
+    assert result.success
+    assert result.data["amount"] == 100.0
+    assert result.data["rate"] == 0.92
+    assert mock_get.call_args.kwargs["params"] == {"from": "USD", "to": "EUR", "amount": 100.0}
+
+
+def test_currency_exchange_rejects_non_numeric_amount():
+    result = CurrencyExchangeAPI().call(base="USD", target="EUR", amount="a lot")
+    assert not result.success
+    assert "number" in result.error
+
+
 @patch("apis.wikipedia.requests.get")
 def test_wikipedia_summary_success(mock_get):
     mock_get.return_value = _mock_response(

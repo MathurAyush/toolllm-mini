@@ -94,6 +94,77 @@ def test_react_agent_survives_api_call_missing_required_argument():
     assert result.steps[0].observation.startswith("Error:")
 
 
+def test_react_agent_ignores_made_up_observation_and_runs_the_tool():
+    registry = default_registry()
+    llm = EchoLLM(
+        responses=[
+            "Thought: compute.\nAction: calculator[23 * 17]\nObservation: 400\nFinish[400]",
+            "Thought: the tool says 391.\nFinish[391]",
+        ]
+    )
+    agent = ReActAgent(llm=llm, registry=registry, max_steps=3)
+
+    result = agent.run("What is 23 times 17?", candidate_apis=registry.all())
+
+    assert result.answer == "391"
+    assert len(result.steps) == 2
+    assert result.steps[0].observation == "391"
+    assert "400" not in result.steps[0].thought_or_action
+
+
+def test_react_agent_runs_action_written_before_a_guessed_finish():
+    registry = default_registry()
+    llm = EchoLLM(
+        responses=[
+            "Action: weather[Tokyo]\nFinish[It is rainy in Tokyo.]",
+            "Finish[Clear, 27 C]",
+        ]
+    )
+    agent = ReActAgent(llm=llm, registry=registry, max_steps=3)
+
+    result = agent.run("Weather in Tokyo?", candidate_apis=registry.all())
+
+    assert result.answer == "Clear, 27 C"
+    assert "Clear" in result.steps[0].observation
+
+
+def test_dfsdt_agent_ignores_made_up_observation_and_runs_the_tool():
+    registry = default_registry()
+    llm = EchoLLM(
+        responses=[
+            "Action: calculator[23 * 17]\nObservation: 400\nFinish[400]",
+            "Finish[391]",
+        ]
+    )
+    agent = DFSDTAgent(llm=llm, registry=registry, max_depth=3, branching_factor=2)
+
+    result = agent.run("What is 23 times 17?", candidate_apis=registry.all())
+
+    assert result.answer == "391"
+    assert result.steps[0].observation == "391"
+
+
+def test_react_agent_converts_currency_with_keyword_arguments(monkeypatch):
+    from unittest.mock import MagicMock
+
+    response = MagicMock()
+    response.json.return_value = {"rates": {"EUR": 92.0}}
+    monkeypatch.setattr("apis.currency.requests.get", lambda *args, **kwargs: response)
+    registry = keyless_registry()
+    llm = EchoLLM(
+        responses=[
+            "Action: currency_exchange[base=USD, target=EUR, amount=100]",
+            "Finish[92 EUR]",
+        ]
+    )
+    agent = ReActAgent(llm=llm, registry=registry, max_steps=3)
+
+    result = agent.run("Convert 100 USD to EUR.", candidate_apis=registry.all())
+
+    assert result.answer == "92 EUR"
+    assert "'converted': 92.0" in result.steps[0].observation
+
+
 def test_dfsdt_agent_backtracks_on_api_call_missing_required_argument():
     registry = keyless_registry()
     llm = EchoLLM(

@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import re
-
 from apis.base import BaseAPI
 
+from .text import tokenize
 from .types import RetrievedAPI
-
-_TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 
 
 def _tokenize(text: str) -> set[str]:
-    return set(_TOKEN_PATTERN.findall(text.lower()))
+    return set(tokenize(text))
 
 
 class KeywordMatchRetriever:

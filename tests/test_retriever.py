@@ -1,8 +1,9 @@
 import pytest
 
-from apis.registry import default_registry
+from apis.registry import default_registry, keyless_registry
 from retriever.keyword_baseline import KeywordMatchRetriever
 from retriever.retriever import APIRetriever
+from retriever.text import stem
 
 
 def test_retriever_ranks_relevant_api_first():
@@ -39,6 +40,32 @@ def test_keyword_baseline_scores_no_overlap_as_zero():
     results = retriever.retrieve("zzz qqq nonsense", top_k=3)
 
     assert all(result.score == 0.0 for result in results)
+
+
+def test_stem_matches_simple_inflections():
+    assert stem("converts") == stem("convert")
+    assert stem("currencies") == "currency"
+    assert stem("rates") == stem("rate")
+    assert stem("us") == "us"
+    assert stem("status") == "status"
+
+
+@pytest.mark.parametrize("retriever_cls", ["tfidf", "keyword"])
+@pytest.mark.parametrize(
+    "instruction, expected",
+    [
+        ("Convert 100 US dollars to Euros.", "currency_exchange"),
+        ("What is 23 times 17?", "calculator"),
+    ],
+)
+def test_word_retrievers_handle_unstemmed_queries(retriever_cls, instruction, expected):
+    apis = keyless_registry().all()
+    retriever = APIRetriever(apis) if retriever_cls == "tfidf" else KeywordMatchRetriever(apis)
+
+    top = retriever.retrieve(instruction, top_k=1)
+
+    assert top[0].api.name == expected
+    assert top[0].score > 0.0
 
 
 def test_semantic_retriever_ranks_relevant_api_first():

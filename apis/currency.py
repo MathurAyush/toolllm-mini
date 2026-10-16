@@ -29,7 +29,10 @@ class CurrencyExchangeAPI(BaseAPI):
     """
 
     name = "currency_exchange"
-    description = "Converts an amount between currencies using daily exchange rates."
+    description = (
+        "Converts an amount of money between currencies (e.g. dollars, euros, yen) "
+        "using daily exchange rates."
+    )
     parameters = {
         "base": "Three-letter source currency code, e.g. 'USD'.",
         "target": "Three-letter target currency code, e.g. 'EUR'.",
@@ -39,6 +42,13 @@ class CurrencyExchangeAPI(BaseAPI):
     _ENDPOINT = "https://api.frankfurter.app/latest"
 
     def call(self, base: str, target: str, amount: float = 1.0) -> APIResponse:
+        # Agents pass every argument as text, e.g. amount="100".
+        try:
+            amount = float(amount)
+        except (TypeError, ValueError):
+            return APIResponse(success=False, error=f"Amount must be a number, got '{amount}'.")
+        base, target = base.strip().upper(), target.strip().upper()
+
         try:
             response = requests.get(
                 self._ENDPOINT,

@@ -6,7 +6,7 @@ from apis.registry import APIRegistry
 
 from .anthropic_llm import AnthropicLLM
 from .llm import BaseLLM
-from .parsing import parse_action, parse_args, parse_finish
+from .parsing import parse_args, parse_step, truncate_at_observation
 from .prompts import build_prompt
 
 
@@ -49,15 +49,14 @@ class ReActAgent:
 
         for _ in range(self._max_steps):
             prompt = build_prompt(instruction, api_descriptions, history)
-            response = self._llm.generate(prompt).text
+            response = truncate_at_observation(self._llm.generate(prompt).text)
             history += response + "\n"
 
-            finish_match = parse_finish(response)
+            action_match, finish_match = parse_step(response)
             if finish_match:
                 steps.append(Step(thought_or_action=response))
                 return ReActResult(answer=finish_match.group(1).strip(), steps=steps, success=True)
 
-            action_match = parse_action(response)
             if action_match:
                 api_name, raw_args = action_match.groups()
                 api = self._registry.get(api_name)

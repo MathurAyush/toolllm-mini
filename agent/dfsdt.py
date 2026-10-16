@@ -6,7 +6,7 @@ from apis.registry import APIRegistry
 
 from .anthropic_llm import AnthropicLLM
 from .llm import BaseLLM
-from .parsing import parse_action, parse_args, parse_finish
+from .parsing import parse_args, parse_step, truncate_at_observation
 from .prompts import build_prompt
 from .react import Step
 
@@ -70,13 +70,12 @@ class DFSDTAgent:
         for _ in range(self._branching_factor):
             explored["count"] += 1
             prompt = build_prompt(instruction, api_descriptions, history)
-            response = self._llm.generate(prompt).text
+            response = truncate_at_observation(self._llm.generate(prompt).text)
 
-            finish_match = parse_finish(response)
+            action_match, finish_match = parse_step(response)
             if finish_match:
                 return path + [Step(thought_or_action=response)], finish_match.group(1).strip()
 
-            action_match = parse_action(response)
             if not action_match:
                 continue
 

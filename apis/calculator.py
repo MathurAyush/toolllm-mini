@@ -8,7 +8,10 @@ from .base import APIResponse, BaseAPI
 
 class CalculatorAPI(BaseAPI):
     name = "calculator"
-    description = "Evaluates a basic arithmetic expression and returns the numeric result."
+    description = (
+        "Evaluates a basic arithmetic expression (add, subtract, multiply or times, "
+        "divide, power) and returns the numeric result."
+    )
     parameters = {"expression": "A string containing a basic arithmetic expression, e.g. '2 + 2 * 3'."}
 
     _OPERATORS = {

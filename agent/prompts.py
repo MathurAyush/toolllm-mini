@@ -11,6 +11,10 @@ Action: api_name[arguments]
 Observation: result of the action
 ...
 Finish[final answer]
+
+Write at most one Action per reply and stop right after it. Never write an
+Observation line yourself: the system runs the action and adds the real
+Observation. Only use Finish once the observations contain what you need.
 """
 
 

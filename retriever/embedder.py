@@ -4,13 +4,15 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+from .text import tokenize
+
 
 class TfidfEmbedder:
     """Minimal TF-IDF based text embedder used to rank API descriptions
     against a natural language instruction."""
 
     def __init__(self) -> None:
-        self._vectorizer = TfidfVectorizer()
+        self._vectorizer = TfidfVectorizer(tokenizer=tokenize, token_pattern=None, lowercase=False)
         self._matrix = None
         self._fitted = False
 
