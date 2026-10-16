@@ -82,8 +82,8 @@ the ReAct agent scored 89\% and the DFSDT-inspired agent 84\%. These numbers
 are \prov{}: reading the results showed that in 37 of 38 runs the model
 wrote the whole episode, including invented tool outputs, in a single
 reply, and our loop accepted it. We describe this bug, three argument-parsing
-bugs and a retrieval weakness that we found, and what still has to be done
-before the numbers can be trusted.
+bugs and a retrieval weakness, and how we fixed them with 20 new tests. The
+benchmark has not yet been re-run with the fixed code.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -103,8 +103,8 @@ The code is split into four Python packages: \code{apis/} (tools),
 \code{retriever/} (choosing candidate tools), \code{agent/} (the reasoning
 loops and model back ends) and \code{eval/} (judging and reports). A
 Streamlit app (\code{app.py}) and three scripts sit on top. In total the
-repository holds about 3{,}170 lines of Python, of which 689 are the UI
-and 622 are tests.
+repository holds about 3{,}450 lines of Python, of which 689 are the UI
+and 795 are tests.
 
 Our contributions in Phase~1 are:
 \begin{itemize}
@@ -113,9 +113,9 @@ Our contributions in Phase~1 are:
         they rank tools on our benchmark;
   \item a ReAct loop and a DFSDT-inspired search loop that share one
         prompt builder and one action parser;
-  \item a benchmark harness with an LLM judge, plus 52 unit tests;
-  \item an honest account of the bugs that make our first benchmark
-        numbers unreliable.
+  \item a benchmark harness with an LLM judge, plus 72 unit tests;
+  \item an account of the bugs that made our first benchmark numbers
+        unreliable, and the fixes for them.
 \end{itemize}
 
 \noindent\textbf{What we did not do.} We did not use the ToolBench
@@ -225,16 +225,20 @@ similarity to the instruction. The embedder only needs \code{fit()} and
 \code{similarity()}, so \code{TfidfEmbedder} and
 \code{SentenceTransformerEmbedder} are interchangeable.
 \code{KeywordMatchRetriever} is a separate baseline that scores by Jaccard
-overlap of lower-cased word sets. TF-IDF is the default because it needs
-no model download.
+overlap of word sets. Both word-based methods share one tokenizer in
+\code{retriever/text.py}, which lower-cases the text and strips a few
+common suffixes (Section~\ref{sec:stem}). TF-IDF is the default because it
+needs no model download.
 
 \subsection{ReAct agent}
 \code{ReActAgent.run()} loops up to \code{max_steps}~=~6 times. Each turn,
 \code{build_prompt()} concatenates the instructions in
 \code{REACT_SYSTEM_PROMPT}, the tool list, the user instruction and the
-history so far, and sends it as one user message. The reply is checked
-first for \code{Finish[...]} and then for \texttt{Action: name[args]}. If an
-action is found, \code{parse_args()} turns the bracket text into keyword
+history so far, and sends it as one user message. The reply is first cut
+at its first \texttt{Observation:} line, because only the tool may supply
+observations. \code{parse_step()} then looks for \texttt{Action: name[args]}
+and \code{Finish[...]}, and whichever comes first wins. If it is an
+action, \code{parse_args()} turns the bracket text into keyword
 arguments, the tool is called, and \texttt{Observation: ...} is added to the
 history. Unknown tool names and exceptions become \code{Error:}
 observations instead of crashing the run.
@@ -310,11 +314,12 @@ of this run.
 
 \noindent\fbox{\parbox{\dimexpr\columnwidth-2\fboxsep-2\fboxrule}{\small
 \textbf{Status note.} All benchmark numbers in this section are
-\prov{}. They come from the run committed on 18~September~2026. While
-reading the CSV we found that the agent loop accepted tool results the
-model had made up (Section~\ref{sec:fake-obs}), so these pass rates
-mostly measure the model's own knowledge rather than tool use. They
-will be replaced after the corrected benchmark is re-run.}}
+\prov{}. They come from the run committed on 18~September~2026, before
+our fixes. While reading the CSV we found that the agent loop accepted
+tool results the model had made up (Section~\ref{sec:fake-obs}), so these
+pass rates mostly measure the model's own knowledge rather than tool
+use. The fixes are now in the code, but the benchmark has not been
+re-run yet; corrected pass rates: \tbf{}.}}
 
 \subsection{Provisional pass rates}
 Table~\ref{tab:pass} and Fig.~\ref{fig:pass} give the judged pass rates.
@@ -367,8 +372,9 @@ the bug, not of skill.
 \subsection{Retriever check}
 Because the benchmark skips retrieval, we measured the retrievers on their
 own. For each benchmark instruction we ranked the 9 keyless tools and
-checked the top~3 (Table~\ref{tab:ret}). This needs no model calls, so the
-numbers are final.
+checked the top~3, before and after the tokenizer fix of
+Section~\ref{sec:stem} (Table~\ref{tab:ret}). This needs no model calls,
+so these numbers are final.
 
 \begin{table}[t]
   \centering
@@ -381,17 +387,20 @@ numbers are final.
     Retriever & Top-1 & All needed & Top score \\
               & correct & in top 3 & is 0.0 \\
     \midrule
-    Keyword (Jaccard) & 12 & 11 & 2 \\
-    TF-IDF (default)  & 12 & 11 & 2 \\
-    MiniLM embeddings & 17 & 17 & 0 \\
+    Keyword, before fix & 12 & 11 & 2 \\
+    TF-IDF, before fix  & 12 & 11 & 2 \\
+    Keyword, after fix  & 15 & 14 & 0 \\
+    TF-IDF, after fix   & 15 & 14 & 0 \\
+    MiniLM embeddings   & 17 & 17 & 0 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-The semantic retriever was clearly better. On ``Convert 100 US dollars to
-Euros.'' it ranked \code{currency_exchange} first with a score of 0.601,
-while both word-based retrievers gave every tool 0.0
-(Section~\ref{sec:stem}).
+Before the fix, on ``Convert 100 US dollars to Euros.'' both word-based
+retrievers gave every tool 0.0, while MiniLM ranked
+\code{currency_exchange} first with 0.601. After the fix, TF-IDF ranks
+it first with 0.386. The semantic retriever is still the best of the
+three.
 
 \section{Challenges and Lessons Learned}
 
@@ -400,44 +409,64 @@ Our prompt shows the model the full pattern \texttt{Thought / Action /
 Observation / ... / Finish[...]}, and we call the model with no stop
 sequence. The model therefore often writes an action, then a fake
 observation, then \code{Finish[...]} in one reply. \code{ReActAgent}
-checks for \code{Finish} before it checks for an action, so it returns the
-final answer and never calls the tool. \code{DFSDTAgent} does the same.
+checked for \code{Finish} before it checked for an action, so it returned
+the final answer and never called the tool. \code{DFSDTAgent} did the same.
 The evidence is in Section~\ref{sec:distrust}. Our unit tests did not catch it because
 every scripted \code{EchoLLM} reply contains only one action or one
 finish.
 
-The fix we have designed is to cut each reply at the first
-\code{Observation:} line before parsing, to handle an action before a
-finish in the same reply, and to tell the model to stop after each action.
-We also plan a test where one scripted reply contains a fake observation.
-This fix is not yet merged; its status is \tbf{}.
+We fixed it in three places. In \code{agent/parsing.py}, the new function
+\code{truncate_at_observation()} drops everything from the first
+\texttt{Observation:} line of a reply, so a guessed result and the
+\code{Finish} after it never reach the agent or the history.
+\code{parse_step()} returns whichever of \code{Action} and \code{Finish}
+comes first, so an action written before a guessed answer is run. Both
+agents use these two functions. Finally, the prompt now tells the model
+to write one action, stop, and never write an observation itself. New
+tests script exactly the bad reply we saw, \texttt{Action:
+calculator[23 * 17]}, a fake \texttt{Observation: 400} and
+\code{Finish[400]}, and check that both agents run the calculator and
+answer 391.
 
 \subsection{Argument parsing}\label{sec:args}
 We found three problems in \code{agent/parsing.py}, all reproduced
-offline:
+offline, and fixed each one:
 \begin{enumerate}\raggedright
   \item \code{ACTION_PATTERN} uses a greedy \texttt{(.*)\textbackslash]}
         with \code{DOTALL}, so on a multi-part reply the arguments run to
         the last \code{]}. For \texttt{calculator[23 * 17]} followed by a
         fake observation and \code{Finish[391]}, the captured argument was
         \texttt{23 * 17]\textbackslash nObservation: 391\textbackslash nFinish[391}.
+        \emph{Fix:} the pattern now stops at the end of the line, so the
+        argument is \texttt{23 * 17}.
   \item \code{parse_args()} splits on every comma. The documented
         OpenWeatherMap form \code{city=London,GB} becomes
         \texttt{\{\textquotesingle{}city\textquotesingle{}: \textquotesingle{}London\textquotesingle{}, \textquotesingle{}GB\textquotesingle{}: \textquotesingle{}\textquotesingle{}\}}, and positional
         \texttt{USD, EUR, 100} is passed whole as \code{base}.
+        \emph{Fix:} keyword arguments are split only at a comma that
+        starts a new \texttt{key=}, and positional values are mapped onto
+        the parameters in order, but only for tools that need more than
+        one argument (found with \code{inspect.signature}).
   \item All values stay strings. A well-formed
         \texttt{currency\_exchange[base=USD, target=EUR, amount=100]}
         always fails, because \code{CurrencyExchangeAPI.call()} divides a
         float by \texttt{\textquotesingle{}100\textquotesingle{}}. With a mocked HTTP response the observation
         was \texttt{Error: unsupported operand type(s) for /: \textquotesingle{}float\textquotesingle{} and
         \textquotesingle{}str\textquotesingle{}}. This fits ReAct's six-step failure on bench-03, though we
-        did not save that trace and cannot confirm it.
+        did not save that trace and cannot confirm it. \emph{Fix:}
+        \code{currency_exchange} is our only tool with a numeric
+        parameter, so it now converts \code{amount} itself and returns
+        a clear error for text such as ``a lot''. We did not add type
+        guessing to the parser, because the calculator needs its
+        expression as text.
 \end{enumerate}
 An earlier and related bug is fixed. When a model left out a required
 argument, \code{api.call(**kwargs)} raised \code{TypeError} and the whole
 run crashed. Commit \code{495b278} wrapped the call: ReAct now records an
 \code{Error:} observation and DFSDT treats the branch as failed. Two tests
-cover this. The other three problems are still open: \tbf{}.
+cover this. The three fixes above have their own tests in
+\code{tests/test_parsing.py}, \code{tests/test_agent.py} and
+\code{tests/test_external_apis.py}.
 
 \subsection{Retriever scored 0.0 on unstemmed words}\label{sec:stem}
 Both word-based retrievers compare exact lower-case tokens. The
@@ -445,10 +474,18 @@ Both word-based retrievers compare exact lower-case tokens. The
 but users write ``convert'' and ``dollars''. With no shared token, the
 keyword and TF-IDF scores were 0.0 for every tool, so the top~3 was just
 registry order (calculator, weather, search). The same happened for bench-01, ``What is 23 times 17?'', because the
-\code{calculator} description never uses the word ``times''. Stemming~\cite{porter1980} or richer
-descriptions would help the word-based methods; the MiniLM retriever
-already avoids the problem (Table~\ref{tab:ret}). Making it the default in
-the UI is still \tbf{}.
+\code{calculator} description never uses the word ``times''.
+
+We fixed this in two ways. First, \code{retriever/text.py} adds a very
+small suffix stripper, much simpler than the Porter
+stemmer~\cite{porter1980}: it maps ``ies'' to ``y'' and removes ``ing'',
+``ed'' and a final ``s'', leaving short words and endings such as ``us''
+alone. TF-IDF and the keyword baseline both use it, so ``converts'' and
+``convert'' now match. Second, we added the words people actually type to
+two descriptions: ``multiply or times'' for the calculator and ``money
+(e.g.\ dollars, euros, yen)'' for currency. Table~\ref{tab:ret} shows the
+effect: no instruction scores 0.0 any more. We kept TF-IDF as the UI
+default to avoid the model download.
 
 \subsection{Free-tier rate limits}
 A benchmark pass makes at least four model calls per instruction (one
@@ -473,8 +510,8 @@ Gemini. Because both agents only see \code{BaseLLM}, the switch was
 one new 63-line class and one environment variable.
 
 \section{Testing}
-The \code{tests/} folder has 52 tests in 7 files, and all 52 pass
-(\code{pytest}, about 49\,s on our machine). Agent tests use \code{EchoLLM} to script the model: one checks
+The \code{tests/} folder has 72 tests in 8 files, and all 72 pass
+(\code{pytest}, about 18\,s on our machine). Agent tests use \code{EchoLLM} to script the model: one checks
 that ReAct calls the calculator and finishes with 89; another checks that
 DFSDT backtracks past a failing \code{weather[city=Atlantis]} call and
 reports \code{explored_paths}~=~3. The eight web-API wrappers are tested
@@ -483,13 +520,21 @@ no network. The judge tests feed scripted judge replies, including
 malformed ones, to check verdict parsing. The semantic retriever test
 skips itself if \code{sentence-transformers} is missing.
 
-The main gap is the one Section~\ref{sec:fake-obs} exposed: our tests
-assume the model behaves, with one action per reply. No test yet covers
-multi-part replies, commas inside values, or numeric arguments.
+Our first 52 tests assumed the model behaves, with one action per reply,
+which is why they missed the bug in Section~\ref{sec:fake-obs}. We added
+20 tests for the fixes: fake observations and an action followed by a
+guessed \code{Finish} (for both agents), the parsing cases of
+Section~\ref{sec:args}, text and non-numeric amounts for currency, and
+the unstemmed queries of Section~\ref{sec:stem} for both word-based
+retrievers. To check that these tests really catch the bugs, we ran them
+against the code from before the fixes: 11 of them failed there, and the
+new parser tests could not even be imported. All of them pass on the fixed
+code.
 
 \section{Limitations}\label{sec:limits}
 \begin{itemize}
-  \item The benchmark results are \prov{} for the reason above.
+  \item The benchmark results are \prov{}: they predate the fixes and
+        have not been re-run.
   \item 19 instructions written by us is a very small test set, and we
         wrote them knowing which tools exist.
   \item The judge is the same model as the agents and only sees the final
@@ -505,8 +550,8 @@ multi-part replies, commas inside values, or numeric arguments.
 
 \section{Future Work}
 \begin{enumerate}
-  \item Merge the fixes in Sections~\ref{sec:fake-obs}--\ref{sec:stem}, add tests for them, and
-        re-run the benchmark; then replace every \prov{} value.
+  \item Re-run the benchmark on the fixed code and replace every
+        \prov{} value.
   \item Save the full step trace of every run as JSON next to the CSV.
   \item Give the judge the observations, use a different model as judge,
         and run the win-rate comparison.
@@ -519,13 +564,15 @@ multi-part replies, commas inside values, or numeric arguments.
 \section{Conclusion}
 We built a working small-scale version of the ToolLLM pipeline: tool
 wrappers, three retrievers, a ReAct agent, a DFSDT-inspired search agent,
-an LLM judge and a UI, with 52 passing tests. The most useful thing we
+an LLM judge and a UI, with 72 passing tests. The most useful thing we
 learned came from reading our own results: a high pass rate meant little
 once we saw that the model was writing its own observations. Our first
-numbers (89\% for ReAct, 84\% for DFSDT) are therefore \prov{}. The
-retriever comparison, which needed no model, gave a firm result: sentence
-embeddings found a needed tool first in 17 of 19 cases against 12 for
-TF-IDF. Phase~2 starts with the fixes listed above and a clean re-run.
+numbers (89\% for ReAct, 84\% for DFSDT) are therefore \prov{}. We have
+fixed that bug, the three parsing bugs and the retriever's exact-match
+problem, each with tests. The retriever comparison needed no model and is
+final: a needed tool now comes first for 15 of 19 instructions with
+TF-IDF (12 before the fix) and 17 of 19 with sentence embeddings. Phase~2
+starts with a clean re-run of the benchmark.
 
 \bibliographystyle{IEEEtran}
 {\raggedright
