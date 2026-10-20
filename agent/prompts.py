@@ -1,26 +1,15 @@
 from __future__ import annotations
 
-REACT_SYSTEM_PROMPT = """You are an assistant that solves tasks by interleaving Thought,
-Action, and Observation steps, in the style of ReAct. Available actions:
+SYSTEM_PROMPT = """You are an assistant that answers the user's request, calling the
+provided tools when they are needed.
 
-{api_descriptions}
-
-Use the format:
-Thought: reasoning about what to do next
-Action: api_name[arguments]
-Observation: result of the action
-...
-Finish[final answer]
-
-Write at most one Action per reply and stop right after it. Never write an
-Observation line yourself: the system runs the action and adds the real
-Observation. Only use Finish once the observations contain what you need.
+- If the request needs data or a computation a tool provides, call the tool.
+  Do not guess or make up what a tool would return: the system runs each tool
+  call and sends you the real result.
+- Call one tool at a time and wait for its result before deciding what to do
+  next. If a call returns an error, you may fix the arguments and try again.
+- If the request can be answered without any tool (for example general
+  knowledge or conversation), answer directly without calling a tool.
+- When you have what you need, reply with the final answer as plain text.
 """
 
-
-def build_prompt(instruction: str, api_descriptions: str, history: str) -> str:
-    return (
-        f"{REACT_SYSTEM_PROMPT.format(api_descriptions=api_descriptions)}\n"
-        f"Instruction: {instruction}\n"
-        f"{history}"
-    )

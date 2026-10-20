@@ -30,12 +30,17 @@ win-rate metrics.
   semantic retriever on the sample instructions.
 - `agent/` — The reasoning loop. Includes a pluggable `BaseLLM`
   interface — `AnthropicLLM` (the default, backed by the Anthropic
-  Messages API) and `GeminiLLM` (backed by the Google Gemini API) for
+  Messages API) and `GeminiLLM` (backed by the Google Gen AI SDK) for
   real usage, and a deterministic `EchoLLM` for local development and
-  tests — a `ReActAgent` implementing the Thought/Action/Observation
-  loop, and a `DFSDTAgent` implementing a depth-first, branching search
-  (capped at depth 4, breadth 3) over candidate reasoning paths with
-  backtracking on failed or unproductive actions.
+  tests — a `ReActAgent` implementing the reason/act loop, and a
+  `DFSDTAgent` implementing a depth-first, branching search (capped at
+  depth 4, breadth 3 and 20 model replies) over candidate reasoning
+  paths with backtracking on failed actions. Both use native function
+  calling: every candidate API is declared to the model as a function
+  generated from its registry schema (`BaseAPI.function_schema()`), the
+  model can only request a call, and the agent runs it and returns the
+  real result as a function response. A question that needs no tool is
+  answered directly and reported with `stop_reason="no_tool_needed"`.
 - `eval/` — Evaluation utilities: a keyword-based `judge_pass` for
   scoring answers against expected keywords, and an `LLMJudge` that uses
   a language model to grade a single answer as Pass/Fail/Unsure

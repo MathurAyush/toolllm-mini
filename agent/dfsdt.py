@@ -5,10 +5,10 @@ from dataclasses import dataclass, field
 from apis.registry import APIRegistry
 
 from .anthropic_llm import AnthropicLLM
-from .llm import BaseLLM
-from .parsing import parse_args, parse_step, truncate_at_observation
-from .prompts import build_prompt
+from .llm import BaseLLM, Message, ToolCall, ToolResultMessage, UserMessage
+from .prompts import SYSTEM_PROMPT
 from .react import Step
+from .tools import describe_turn, execute_tool_call, finish_text, function_declarations, tool_names
 
 
 @dataclass
@@ -17,19 +17,32 @@ class DFSDTResult:
     steps: list[Step] = field(default_factory=list)
     success: bool = False
     explored_paths: int = 0
+    # Tool calls executed along the returned path, in order.
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    # "answered", "no_tool_needed", "max_steps" or "exhausted".
+    stop_reason: str = "exhausted"
+
+
+@dataclass
+class _Search:
+    system: str
+    tools: list[dict]
+    allowed: set[str]
+    explored: int = 0
 
 
 class DFSDTAgent:
-    """Depth-First Search-based Decision Tree reasoning loop.
+    """Depth-First Search-based Decision Tree reasoning loop using native
+    function calling.
 
     At each node the agent samples up to `branching_factor` (breadth)
-    candidate next steps from the underlying model, follows the first
-    branch whose action succeeds, and backtracks to try an alternate
-    action whenever a branch fails, looks unproductive (no parseable
-    action), or the depth budget is exhausted before reaching Finish.
-    Capped by default at depth 4 and breadth 3. Defaults to
-    `AnthropicLLM` for the reasoning calls; pass a different `BaseLLM`
-    (e.g. `EchoLLM`) to run offline or in tests.
+    candidate replies from the model. A plain-text reply is a final answer.
+    A reply requesting tool calls is executed by the agent; if every call
+    returns a real result the search goes one level deeper with those
+    results, otherwise it backtracks and samples an alternative. Capped by
+    default at depth 4 and breadth 3, and at `max_steps` model replies in
+    total. Defaults to `AnthropicLLM`; pass a different `BaseLLM` (e.g.
+    `GeminiLLM`, or `EchoLLM` offline and in tests).
     """
 
     def __init__(
@@ -38,67 +51,72 @@ class DFSDTAgent:
         llm: BaseLLM | None = None,
         max_depth: int = 4,
         branching_factor: int = 3,
+        max_steps: int = 20,
     ) -> None:
         self._llm = llm if llm is not None else AnthropicLLM()
         self._registry = registry
         self._max_depth = max_depth
         self._branching_factor = branching_factor
+        self._max_steps = max_steps
 
     def run(self, instruction: str, candidate_apis: list) -> DFSDTResult:
-        api_descriptions = "\n".join(f"- {api.name}: {api.description}" for api in candidate_apis)
-        explored = {"count": 0}
-        steps, answer = self._search(instruction, api_descriptions, "", [], 0, explored)
+        search = _Search(SYSTEM_PROMPT, function_declarations(candidate_apis), tool_names(candidate_apis))
+        steps, answer = self._search(search, [UserMessage(instruction)], [], 0)
+
+        used_tools = any(step.tool_call is not None for step in steps)
+        if answer is not None:
+            stop_reason = "answered" if used_tools else "no_tool_needed"
+        elif search.explored >= self._max_steps:
+            stop_reason = "max_steps"
+        else:
+            stop_reason = "exhausted"
         return DFSDTResult(
             answer=answer,
             steps=steps,
             success=answer is not None,
-            explored_paths=explored["count"],
+            explored_paths=search.explored,
+            tool_calls=[step.tool_call for step in steps if step.tool_call is not None],
+            stop_reason=stop_reason,
         )
 
     def _search(
         self,
-        instruction: str,
-        api_descriptions: str,
-        history: str,
+        search: _Search,
+        messages: list[Message],
         path: list[Step],
         depth: int,
-        explored: dict,
     ) -> tuple[list[Step], str | None]:
         if depth >= self._max_depth:
             return path, None
 
         for _ in range(self._branching_factor):
-            explored["count"] += 1
-            prompt = build_prompt(instruction, api_descriptions, history)
-            response = truncate_at_observation(self._llm.generate(prompt).text)
+            if search.explored >= self._max_steps:
+                return path, None
+            search.explored += 1
+            turn = self._llm.chat(search.system, messages, search.tools)
 
-            action_match, finish_match = parse_step(response)
-            if finish_match:
-                return path + [Step(thought_or_action=response)], finish_match.group(1).strip()
+            if not turn.tool_calls:
+                answer = turn.text.strip()
+                if not answer:
+                    continue
+                used_tools = any(step.tool_call is not None for step in path)
+                return path + [Step(thought_or_action=finish_text(answer, used_tools))], answer
 
-            if not action_match:
-                continue
-
-            api_name, raw_args = action_match.groups()
-            api = self._registry.get(api_name)
-            if api is None:
-                continue
-
-            kwargs = parse_args(raw_args, api)
-            try:
-                result = api.call(**kwargs)
-            except Exception:
-                continue
-            if not result.success:
-                continue
-
-            observation = str(result.data)
-            new_history = history + response + f"\nObservation: {observation}\n"
-            new_path = path + [Step(thought_or_action=response, observation=observation)]
-            deeper_path, answer = self._search(
-                instruction, api_descriptions, new_history, new_path, depth + 1, explored
-            )
-            if answer is not None:
-                return deeper_path, answer
+            results, new_steps = [], []
+            for call in turn.tool_calls:
+                result, observation = execute_tool_call(call, self._registry, search.allowed)
+                if result.is_error:
+                    break
+                results.append(result)
+                new_steps.append(Step(describe_turn(turn, call), observation=observation, tool_call=call))
+            else:
+                deeper_path, answer = self._search(
+                    search,
+                    messages + [turn, ToolResultMessage(results)],
+                    path + new_steps,
+                    depth + 1,
+                )
+                if answer is not None:
+                    return deeper_path, answer
 
         return path, None

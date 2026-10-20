@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+import json
 import os
 
-from .llm import BaseLLM, LLMResponse
+from .llm import BaseLLM, LLMResponse, Message, ModelTurn, ToolCall, ToolResultMessage, UserMessage
 
 
 class AnthropicLLM(BaseLLM):
     """Anthropic Messages API - reasoning backend
 
     Description:
-        Drives the ReAct/DFSDT Thought/Action/Observation loop with a
-        real language model, via the Anthropic Messages API.
+        Drives the ReAct/DFSDT loops with a real language model via the
+        Anthropic Messages API, using native tool use: the model can only
+        request tool calls, and the agent sends back the real results as
+        tool_result blocks.
 
     Required parameters:
         model (str, optional): Model id to call. Defaults to
@@ -45,3 +48,52 @@ class AnthropicLLM(BaseLLM):
         )
         text = "".join(block.text for block in response.content if block.type == "text")
         return LLMResponse(text=text)
+
+    def chat(self, system: str, messages: list[Message], tools: list[dict]) -> ModelTurn:
+        kwargs = {}
+        if tools:
+            kwargs["tools"] = [
+                {"name": t["name"], "description": t["description"], "input_schema": t["parameters"]}
+                for t in tools
+            ]
+        response = self._client.messages.create(
+            model=self._model,
+            max_tokens=self._max_tokens,
+            system=system,
+            messages=[self._message(m) for m in messages],
+            **kwargs,
+        )
+        text = "".join(block.text for block in response.content if block.type == "text")
+        calls = [
+            ToolCall(name=block.name, args=dict(block.input or {}), id=block.id)
+            for block in response.content
+            if block.type == "tool_use"
+        ]
+        return ModelTurn(text=text, tool_calls=calls, raw=response.content)
+
+    @staticmethod
+    def _message(message: Message) -> dict:
+        if isinstance(message, UserMessage):
+            return {"role": "user", "content": message.text}
+        if isinstance(message, ModelTurn):
+            if message.raw is not None:
+                return {"role": "assistant", "content": message.raw}
+            content = [{"type": "text", "text": message.text}] if message.text else []
+            content += [
+                {"type": "tool_use", "id": c.id, "name": c.name, "input": c.args} for c in message.tool_calls
+            ]
+            return {"role": "assistant", "content": content}
+        if isinstance(message, ToolResultMessage):
+            return {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": r.call.id,
+                        "content": json.dumps(r.response),
+                        "is_error": r.is_error,
+                    }
+                    for r in message.results
+                ],
+            }
+        raise TypeError(f"Unsupported message type: {type(message).__name__}")

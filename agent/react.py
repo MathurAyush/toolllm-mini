@@ -5,15 +5,16 @@ from dataclasses import dataclass, field
 from apis.registry import APIRegistry
 
 from .anthropic_llm import AnthropicLLM
-from .llm import BaseLLM
-from .parsing import parse_args, parse_step, truncate_at_observation
-from .prompts import build_prompt
+from .llm import BaseLLM, Message, ToolCall, ToolResultMessage, UserMessage
+from .prompts import SYSTEM_PROMPT
+from .tools import describe_turn, execute_tool_call, finish_text, function_declarations, tool_names
 
 
 @dataclass
 class Step:
     thought_or_action: str
     observation: str | None = None
+    tool_call: ToolCall | None = None
 
 
 @dataclass
@@ -21,15 +22,21 @@ class ReActResult:
     answer: str | None
     steps: list[Step] = field(default_factory=list)
     success: bool = False
+    # Every tool call that was executed and returned a real result, in order.
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    # "answered", "no_tool_needed" or "max_steps".
+    stop_reason: str = "max_steps"
 
 
 class ReActAgent:
-    """Thought / Action / Observation reasoning loop over a set of APIs.
+    """Reason / act loop over a set of APIs using native function calling.
 
-    Repeats Thought -> Action (API call) -> Observation until the model
-    emits Finish[...] or `max_steps` is exhausted. Defaults to
-    `AnthropicLLM` for the reasoning calls; pass a different `BaseLLM`
-    (e.g. `EchoLLM`) to run offline or in tests.
+    Each step the model either requests tool calls, which the agent executes
+    and returns as real function responses, or answers in plain text, which
+    ends the run. An answer given without any tool call is reported with
+    `stop_reason="no_tool_needed"`. The loop stops after `max_steps` model
+    replies. Defaults to `AnthropicLLM`; pass a different `BaseLLM` (e.g.
+    `GeminiLLM`, or `EchoLLM` offline and in tests).
     """
 
     def __init__(
@@ -43,35 +50,37 @@ class ReActAgent:
         self._max_steps = max_steps
 
     def run(self, instruction: str, candidate_apis: list) -> ReActResult:
-        api_descriptions = "\n".join(f"- {api.name}: {api.description}" for api in candidate_apis)
-        history = ""
+        tools = function_declarations(candidate_apis)
+        allowed = tool_names(candidate_apis)
+        messages: list[Message] = [UserMessage(instruction)]
         steps: list[Step] = []
+        executed: list[ToolCall] = []
 
         for _ in range(self._max_steps):
-            prompt = build_prompt(instruction, api_descriptions, history)
-            response = truncate_at_observation(self._llm.generate(prompt).text)
-            history += response + "\n"
+            turn = self._llm.chat(SYSTEM_PROMPT, messages, tools)
 
-            action_match, finish_match = parse_step(response)
-            if finish_match:
-                steps.append(Step(thought_or_action=response))
-                return ReActResult(answer=finish_match.group(1).strip(), steps=steps, success=True)
+            if not turn.tool_calls:
+                answer = turn.text.strip()
+                if not answer:
+                    continue  # empty reply: ask again, it still counts as a step
+                used_tools = any(step.tool_call is not None for step in steps)
+                steps.append(Step(thought_or_action=finish_text(answer, used_tools)))
+                return ReActResult(
+                    answer=answer,
+                    steps=steps,
+                    success=True,
+                    tool_calls=executed,
+                    stop_reason="answered" if used_tools else "no_tool_needed",
+                )
 
-            if action_match:
-                api_name, raw_args = action_match.groups()
-                api = self._registry.get(api_name)
-                if api is None:
-                    observation = f"Error: unknown API '{api_name}'."
-                else:
-                    kwargs = parse_args(raw_args, api)
-                    try:
-                        result = api.call(**kwargs)
-                        observation = str(result.data) if result.success else f"Error: {result.error}"
-                    except Exception as exc:
-                        observation = f"Error: {exc}"
-                history += f"Observation: {observation}\n"
-                steps.append(Step(thought_or_action=response, observation=observation))
-            else:
-                steps.append(Step(thought_or_action=response))
+            messages.append(turn)
+            results = []
+            for call in turn.tool_calls:
+                result, observation = execute_tool_call(call, self._registry, allowed)
+                results.append(result)
+                if not result.is_error:
+                    executed.append(call)
+                steps.append(Step(describe_turn(turn, call), observation=observation, tool_call=call))
+            messages.append(ToolResultMessage(results))
 
-        return ReActResult(answer=None, steps=steps, success=False)
+        return ReActResult(answer=None, steps=steps, success=False, tool_calls=executed, stop_reason="max_steps")
