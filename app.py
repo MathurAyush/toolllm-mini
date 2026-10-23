@@ -359,6 +359,32 @@ API_ICONS = {
     "news_headlines": "📰",
 }
 
+CATEGORY_ICONS = {
+    "geo": "🗺️",
+    "weather": "🌦️",
+    "science": "🌋",
+    "clock": "🕒",
+    "calendar": "📅",
+    "finance": "💹",
+    "books": "📚",
+    "food": "🍳",
+    "trivia": "❓",
+    "space": "🚀",
+    "animals": "🐾",
+    "people": "🧑",
+    "education": "🎓",
+    "tech": "💻",
+    "games": "🎮",
+    "entertainment": "🎭",
+    "design": "🎨",
+    "words": "🔤",
+    "utility": "📏",
+}
+
+
+def api_icon(api) -> str:
+    return API_ICONS.get(api.name) or CATEGORY_ICONS.get(api.category, "🔧")
+
 LOADER_HTML = """
 <div class="tl-loader-wrap">
   <div class="tl-loader-ring"></div>
@@ -460,7 +486,7 @@ def run_agent(instruction: str, strategy: str, top_k: int, status) -> tuple[obje
 
 def render_api_badges(apis: list) -> None:
     badges = "".join(
-        f'<span class="tl-api-badge">{API_ICONS.get(api.name, "🔧")} {html.escape(api.name)}</span>'
+        f'<span class="tl-api-badge">{api_icon(api)} {html.escape(api.name)}</span>'
         for api in apis
     )
     st.markdown(badges, unsafe_allow_html=True)
@@ -546,12 +572,12 @@ def render_result(result, apis: list, elapsed: float, api_calls: int, strategy: 
 with st.sidebar:
     st.header("⚙️ Configuration")
     strategy = st.selectbox("Agent strategy", ["ReAct", "DFSDT"], index=0)
-    top_k = st.slider("APIs to retrieve", min_value=1, max_value=9, value=5)
+    top_k = st.slider("APIs to retrieve", min_value=1, max_value=10, value=5)
 
     st.divider()
-    st.subheader("🧰 Available APIs")
-    for api in get_registry().all():
-        icon = API_ICONS.get(api.name, "🔧")
+    st.subheader(f"🧰 Available APIs ({len(get_registry().all())})")
+    for api in sorted(get_registry().all(), key=lambda api: (api.category, api.name)):
+        icon = api_icon(api)
         st.markdown(
             f'<div class="tl-api-item"><span class="tl-api-icon">{icon}</span>'
             f'<div><div class="tl-api-name">{html.escape(api.name)}</div>'
@@ -564,7 +590,7 @@ with st.sidebar:
         st.markdown(
             """
 **Retriever** — embeds the question and every registered API's
-name/description (TF-IDF or sentence-transformer), then ranks APIs
+name, category and description (TF-IDF or sentence-transformer), then ranks APIs
 by similarity and passes the top-k candidates forward.
 
 **Agent** — a ReAct or DFSDT loop drives Thought → Action →

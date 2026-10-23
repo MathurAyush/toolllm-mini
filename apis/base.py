@@ -41,6 +41,10 @@ class BaseAPI(ABC):
     name: str = ""
     description: str = ""
     parameters: dict[str, str] = {}
+    category: str = ""
+    # A representative call (keyword arguments) and the result it returns.
+    example_call: dict[str, Any] = {}
+    example_response: Any = None
 
     @abstractmethod
     def call(self, **kwargs: Any) -> APIResponse:
@@ -72,3 +76,21 @@ class BaseAPI(ABC):
             "description": self.description,
             "parameters": {"type": "object", "properties": properties, "required": required},
         }
+
+    def registry_entry(self) -> dict:
+        """Structured catalog entry: name, description, category, typed
+        parameters, required fields, and an example call with its response."""
+        schema = self.function_schema()["parameters"]
+        return {
+            "name": self.name,
+            "description": self.description,
+            "category": self.category,
+            "parameters": {name: dict(prop) for name, prop in schema["properties"].items()},
+            "required": list(schema["required"]),
+            "example_call": dict(self.example_call),
+            "example_response": self.example_response,
+        }
+
+    def index_text(self) -> str:
+        """Text the retrievers index this API by."""
+        return " ".join(part for part in (self.name, self.category, self.description) if part)

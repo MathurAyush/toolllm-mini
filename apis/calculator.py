@@ -9,10 +9,13 @@ from .base import APIResponse, BaseAPI
 class CalculatorAPI(BaseAPI):
     name = "calculator"
     description = (
-        "Evaluates a basic arithmetic expression (add, subtract, multiply or times, "
-        "divide, power) and returns the numeric result."
+        "Calculates basic arithmetic math: plus, minus, times, divided by, power. "
+        "Returns the numeric result."
     )
     parameters = {"expression": "A string containing a basic arithmetic expression, e.g. '2 + 2 * 3'."}
+    category = "math"
+    example_call = {"expression": "12 * 7 + 5"}
+    example_response = 89
 
     _OPERATORS = {
         ast.Add: operator.add,

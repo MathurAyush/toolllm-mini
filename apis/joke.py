@@ -27,6 +27,9 @@ class JokeAPI(BaseAPI):
     name = "joke"
     description = "Fetches a random joke, optionally filtered by category."
     parameters = {"category": "Joke category, e.g. 'Programming' (optional, defaults to 'Any')."}
+    category = "entertainment"
+    example_call = {"category": "Programming"}
+    example_response = {"category": "Programming", "joke": "Why do programmers prefer dark mode? Because light attracts bugs."}
 
     _ENDPOINT = "https://v2.jokeapi.dev/joke/{category}"
 

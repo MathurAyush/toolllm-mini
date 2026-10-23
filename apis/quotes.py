@@ -27,6 +27,9 @@ class QuoteAPI(BaseAPI):
     name = "random_quote"
     description = "Returns a random quote, optionally filtered by tag."
     parameters = {"tags": "Comma-separated tag filter, e.g. 'wisdom' (optional)."}
+    category = "entertainment"
+    example_call = {"tags": "wisdom"}
+    example_response = {"content": "The only way to do great work is to love what you do.", "author": "Steve Jobs"}
 
     _ENDPOINT = "https://api.quotable.io/random"
 

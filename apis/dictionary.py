@@ -32,6 +32,13 @@ class DictionaryAPI(BaseAPI):
     name = "dictionary"
     description = "Looks up the definition, phonetics, and part of speech for an English word."
     parameters = {"word": "English word to look up, e.g. 'serendipity'."}
+    category = "words"
+    example_call = {"word": "serendipity"}
+    example_response = {
+        "word": "serendipity",
+        "phonetic": "/ˌsɛr.ənˈdɪp.ɪ.ti/",
+        "meanings": [{"part_of_speech": "noun", "definition": "The occurrence of events by chance in a happy way."}],
+    }
 
     _ENDPOINT = "https://api.dictionaryapi.dev/api/v2/entries/en/{word}"
 

@@ -16,7 +16,7 @@ class APIRetriever:
     def __init__(self, apis: list[BaseAPI], embedder=None) -> None:
         self._apis = apis
         self._embedder = embedder if embedder is not None else TfidfEmbedder()
-        corpus = [f"{api.name} {api.description}" for api in apis]
+        corpus = [api.index_text() for api in apis]
         self._embedder.fit(corpus)
 
     def retrieve(self, instruction: str, top_k: int = 3) -> list[RetrievedAPI]:

@@ -38,6 +38,9 @@ class CurrencyExchangeAPI(BaseAPI):
         "target": "Three-letter target currency code, e.g. 'EUR'.",
         "amount": "Amount to convert (optional, defaults to 1.0).",
     }
+    category = "finance"
+    example_call = {"base": "USD", "target": "EUR", "amount": 100}
+    example_response = {"base": "USD", "target": "EUR", "amount": 100.0, "rate": 0.9231, "converted": 92.31}
 
     _ENDPOINT = "https://api.frankfurter.app/latest"
 

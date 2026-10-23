@@ -30,6 +30,13 @@ class WikipediaSummaryAPI(BaseAPI):
     name = "wikipedia_summary"
     description = "Fetches a short summary of a Wikipedia article by title."
     parameters = {"title": "Title of the Wikipedia page, e.g. 'Python (programming language)'."}
+    category = "knowledge"
+    example_call = {"title": "Python (programming language)"}
+    example_response = {
+        "title": "Python (programming language)",
+        "extract": "Python is a high-level, general-purpose programming language.",
+        "url": "https://en.wikipedia.org/wiki/Python_(programming_language)",
+    }
 
     _ENDPOINT = "https://en.wikipedia.org/api/rest_v1/page/summary/{title}"
 

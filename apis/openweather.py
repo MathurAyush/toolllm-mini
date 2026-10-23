@@ -38,6 +38,15 @@ class OpenWeatherMapAPI(BaseAPI):
         "city": "City name, optionally 'City,CountryCode', e.g. 'London,GB'.",
         "api_key": "OpenWeatherMap API key (optional if OPENWEATHERMAP_API_KEY is set).",
     }
+    category = "weather"
+    example_call = {"city": "London,GB"}
+    example_response = {
+        "city": "London",
+        "condition": "light rain",
+        "temperature_c": 14.2,
+        "humidity_pct": 82,
+        "wind_speed_ms": 4.6,
+    }
 
     _ENDPOINT = "https://api.openweathermap.org/data/2.5/weather"
 

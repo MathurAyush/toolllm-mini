@@ -10,16 +10,42 @@ win-rate metrics.
 
 ## Project layout
 
-- `apis/` — API wrapper definitions. Each API implements a small
+- `apis/` — API wrapper definitions: 49 tools in `full_registry()`, 47
+  in `keyless_registry()` (everything except OpenWeatherMap and
+  NewsAPI, which need their own keys). Each API implements a small
   `BaseAPI` interface (`name`, `description`, `parameters`, `call`) so
-  new tools can be registered without touching the rest of the system.
-  Ships with a calculator, a mock weather lookup, and a small local
-  search tool as offline examples, plus wrappers around eight free
-  public APIs: OpenWeatherMap, Frankfurter (currency exchange),
-  Wikipedia summaries, NewsAPI, JokeAPI, Quotable (quotes), the Free
-  Dictionary API, and REST Countries. Each wrapper's docstring
-  documents its name, description, required parameters, and an example
-  response.
+  new tools can be registered without touching the rest of the system,
+  and exposes a structured catalog entry through `registry_entry()`
+  (name, description, category, typed parameters, required fields, and
+  an example call with its response); `APIRegistry.catalog()` lists them
+  all. The catalog covers:
+  - offline examples: a calculator, a mock weather lookup, a small local
+    search tool, and a unit converter;
+  - the original public API wrappers: OpenWeatherMap, Frankfurter
+    (currency exchange), Wikipedia summaries, NewsAPI, JokeAPI,
+    Quotable, the Free Dictionary API, and REST Countries;
+  - 37 more free public APIs, built on `PublicAPI` (`apis/http.py`),
+    grouped by module: geocoding, forecasts, air quality, elevation,
+    ZIP codes, IP geolocation and earthquakes (`geo.py`); world time,
+    sunrise/sunset, public holidays and long weekends (`dates.py`);
+    historical exchange rates and crypto prices (`finance.py`); Open
+    Library book, ISBN and author lookup (`books.py`); recipes and
+    cocktails (`food.py`); NASA APOD, near-earth asteroids, the ISS
+    position and spaceflight news (`space.py`); cat and dog facts and
+    dog photos (`animals.py`); random users, name-based age and
+    nationality estimates, universities and GitHub profiles
+    (`people.py`); and trivia, Pokemon, advice, colors, related words
+    and Hacker News search (`fun.py`).
+
+  A `PublicAPI` subclass declares typed `Param`s and implements one
+  `fetch` (HTTP GET through `get_json`) and a `parse`. The base class
+  validates and coerces arguments, applies a 10 s timeout, and turns
+  timeouts, HTTP errors, non-JSON replies and unexpected payloads into a
+  failed `APIResponse`. Each one also stores a recorded upstream
+  response (`mock_payload`): with `offline=True`, or `TOOLLLM_OFFLINE=1`
+  in the environment, it parses that payload instead of calling the
+  network, which is how the tests run. A live failure is always reported
+  as an error and never answered from the mock.
 - `retriever/` — API retrieval logic. `APIRetriever` ranks registered
   APIs by relevance to a given instruction and returns the top-k
   candidates for the agent to consider, using a pluggable text
@@ -57,7 +83,11 @@ win-rate metrics.
   table (`comparison_table.md`), and a bar chart
   (`pass_rate_comparison.png`).
 - `tests/` — Unit tests covering the APIs, retriever, agent loops, and
-  evaluation utilities.
+  evaluation utilities. `tests/test_public_apis.py` has one offline test
+  per public API, checks that every registry entry is complete and that
+  each example call returns its documented example response, and checks
+  that the retriever ranks each new tool in the top 3 for a typical
+  request. The suite never touches the network.
 
 ## Getting started
 
@@ -77,6 +107,14 @@ ANTHROPIC_API_KEY=sk-ant-...
 GEMINI_API_KEY=...
 BENCHMARK_PROVIDER=gemini  # or "anthropic"; picks which key run_benchmark.py uses
 ```
+
+Every public API in the catalog works without a key. A few take an
+optional free key from the same `.env` file for higher rate limits:
+`NASA_API_KEY` (https://api.nasa.gov; falls back to the shared
+`DEMO_KEY`), `GITHUB_TOKEN`, plus `OPENWEATHERMAP_API_KEY` and
+`NEWSAPI_KEY` for the two key-only wrappers. `.env.example` lists them
+all. Keys are read from the environment only, never passed as tool
+arguments, and `.env` is never committed.
 
 ## Design notes
 

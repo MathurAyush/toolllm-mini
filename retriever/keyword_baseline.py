@@ -19,7 +19,7 @@ class KeywordMatchRetriever:
 
     def __init__(self, apis: list[BaseAPI]) -> None:
         self._apis = apis
-        self._doc_tokens = [_tokenize(f"{api.name} {api.description}") for api in apis]
+        self._doc_tokens = [_tokenize(api.index_text()) for api in apis]
 
     def retrieve(self, instruction: str, top_k: int = 3) -> list[RetrievedAPI]:
         query_tokens = _tokenize(instruction)

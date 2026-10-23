@@ -3,7 +3,7 @@ import pytest
 from apis.registry import default_registry, keyless_registry
 from retriever.keyword_baseline import KeywordMatchRetriever
 from retriever.retriever import APIRetriever
-from retriever.text import stem
+from retriever.text import stem, tokenize
 
 
 def test_retriever_ranks_relevant_api_first():
@@ -48,6 +48,11 @@ def test_stem_matches_simple_inflections():
     assert stem("rates") == stem("rate")
     assert stem("us") == "us"
     assert stem("status") == "status"
+    assert stem("divided") == stem("divide")
+
+
+def test_tokenize_drops_stop_words():
+    assert tokenize("What is the weather in the US?") == ["weather", "us"]
 
 
 @pytest.mark.parametrize("retriever_cls", ["tfidf", "keyword"])
@@ -56,6 +61,7 @@ def test_stem_matches_simple_inflections():
     [
         ("Convert 100 US dollars to Euros.", "currency_exchange"),
         ("What is 23 times 17?", "calculator"),
+        ("What is 45 divided by 9?", "calculator"),
     ],
 )
 def test_word_retrievers_handle_unstemmed_queries(retriever_cls, instruction, expected):

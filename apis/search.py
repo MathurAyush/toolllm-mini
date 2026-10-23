@@ -5,8 +5,14 @@ from .base import APIResponse, BaseAPI
 
 class SearchAPI(BaseAPI):
     name = "search"
-    description = "Searches a small local knowledge base and returns matching snippets."
+    description = (
+        "Searches a small local knowledge base of facts about famous landmarks, "
+        "mountains and places and returns matching snippets."
+    )
     parameters = {"query": "Free-text search query."}
+    category = "knowledge"
+    example_call = {"query": "Eiffel Tower"}
+    example_response = ["The Eiffel Tower is located in Paris, France."]
 
     _DOCUMENTS = [
         "The Eiffel Tower is located in Paris, France.",

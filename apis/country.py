@@ -29,6 +29,9 @@ class CountryInfoAPI(BaseAPI):
     name = "country_info"
     description = "Returns capital, region, population, and currency info for a country."
     parameters = {"name": "Country name, e.g. 'Japan'."}
+    category = "geo"
+    example_call = {"name": "Japan"}
+    example_response = {"name": "Japan", "capital": "Tokyo", "region": "Asia", "population": 125836021, "currencies": ["JPY"]}
 
     _ENDPOINT = "https://restcountries.com/v3.1/name/{name}"
 

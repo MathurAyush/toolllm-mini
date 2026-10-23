@@ -41,6 +41,12 @@ class NewsAPI(BaseAPI):
         "country": "Two-letter country code, e.g. 'us' (optional, defaults to 'us').",
         "api_key": "NewsAPI key (optional if NEWSAPI_KEY is set).",
     }
+    category = "news"
+    example_call = {"query": "technology"}
+    example_response = {
+        "total_results": 34,
+        "articles": [{"title": "Example Headline", "source": "Example News", "url": "https://example.com/article"}],
+    }
 
     _ENDPOINT = "https://newsapi.org/v2/top-headlines"
 

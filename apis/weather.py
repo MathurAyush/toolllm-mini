@@ -7,6 +7,9 @@ class WeatherAPI(BaseAPI):
     name = "weather"
     description = "Returns a mock current-weather report for a given city."
     parameters = {"city": "Name of the city to look up, e.g. 'Paris'."}
+    category = "weather"
+    example_call = {"city": "Tokyo"}
+    example_response = {"condition": "Clear", "temperature_c": 27}
 
     _MOCK_DATA = {
         "paris": {"condition": "Cloudy", "temperature_c": 18},
