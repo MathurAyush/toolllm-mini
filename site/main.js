@@ -1482,6 +1482,64 @@
     }
   };
 
+  PAGES.team = (main) => {
+    const T = C.teamPage;
+    const initials = (name) => name.split(" ").map((w) => w[0]).join("").slice(0, 2);
+    main.innerHTML = `
+      <section class="page-hero">
+        <div class="wrap">
+          <span class="kicker" data-reveal>Team</span>
+          <h1 class="h-line" data-reveal style="--i:1">${fill(T.title)}</h1>
+          <p class="lead" data-reveal style="--i:2">${fill(T.intro)}</p>
+        </div>
+      </section>
+
+      <section class="section" style="padding-top:20px">
+        <div class="wrap">
+          <div class="grid grid-3">
+            ${C.team.map((m, i) => `<article class="card member tilt" data-reveal style="--i:${i}">
+                <div class="avatar" aria-hidden="true">${esc(initials(m.name))}</div>
+                <h3>${esc(m.name)}</h3>
+                <div class="id">${esc(m.id)}</div>
+                <div class="role">${m.role ? esc(m.role) : `Role ${TBD}`}</div>
+              </article>`).join("")}
+          </div>
+          <div class="card repo-card" data-reveal style="margin-top:22px">
+            <div>
+              <h3>${esc(T.repoTitle)}</h3>
+              <p>${fill(T.repoText)}</p>
+              <code>${esc(C.repo.replace(/^https:\/\//, ""))}</code>
+            </div>
+            <a class="btn btn-primary magnetic" href="${C.repo}" rel="noopener">${icon("call")}Open the repository</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" style="padding-top:0">
+        <div class="wrap">
+          <div class="grid grid-2">
+            <article class="card" data-reveal>
+              <h2 class="h-line" style="font-size:clamp(1.6rem,2.4vw,2.2rem)">${fill(T.didTitle)}</h2>
+              <ul class="check-list">${T.did.map((d) => `<li>${icon("check")}${fill(d)}</li>`).join("")}</ul>
+            </article>
+            <article class="card" data-reveal style="--i:1">
+              <h2 class="h-line" style="font-size:clamp(1.6rem,2.4vw,2.2rem)">${fill(T.didNotTitle)}</h2>
+              <ul class="x-list">${T.didNot.map((d) => `<li>${icon("x")}${fill(d)}</li>`).join("")}</ul>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" style="padding-top:0">
+        <div class="wrap">
+          <div class="card" data-reveal>
+            <h2 class="h-line" style="font-size:clamp(1.6rem,2.4vw,2.2rem)">${fill(T.referencesTitle)}</h2>
+            <ol class="refs">${T.references.map((r) => `<li>${r.href ? `<a href="${r.href}" rel="noopener">${esc(r.text)}</a>` : esc(r.text)}</li>`).join("")}</ol>
+          </div>
+        </div>
+      </section>`;
+  };
+
   // @pages
 
   // ---------------------------------------------------------------- boot
