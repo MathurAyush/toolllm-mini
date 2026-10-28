@@ -5,9 +5,10 @@ from dataclasses import dataclass, field
 from apis.registry import APIRegistry
 
 from .anthropic_llm import AnthropicLLM
+from .events import EventHandler, emit
 from .llm import BaseLLM, Message, ToolCall, ToolResultMessage, UserMessage
 from .prompts import SYSTEM_PROMPT
-from .tools import describe_turn, execute_tool_call, finish_text, function_declarations, tool_names
+from .tools import describe_turn, execute_tool_call, finish_text, function_declarations, tool_names, turn_thought
 
 
 @dataclass
@@ -36,7 +37,8 @@ class ReActAgent:
     ends the run. An answer given without any tool call is reported with
     `stop_reason="no_tool_needed"`. The loop stops after `max_steps` model
     replies. Defaults to `AnthropicLLM`; pass a different `BaseLLM` (e.g.
-    `GeminiLLM`, or `EchoLLM` offline and in tests).
+    `GeminiLLM`, or `EchoLLM` offline and in tests). `on_event`, if given,
+    is told about each step as it happens (see `agent.events`).
     """
 
     def __init__(
@@ -44,10 +46,12 @@ class ReActAgent:
         registry: APIRegistry,
         llm: BaseLLM | None = None,
         max_steps: int = 6,
+        on_event: EventHandler | None = None,
     ) -> None:
         self._llm = llm if llm is not None else AnthropicLLM()
         self._registry = registry
         self._max_steps = max_steps
+        self._on_event = on_event
 
     def run(self, instruction: str, candidate_apis: list) -> ReActResult:
         tools = function_declarations(candidate_apis)
@@ -65,6 +69,7 @@ class ReActAgent:
                     continue  # empty reply: ask again, it still counts as a step
                 used_tools = any(step.tool_call is not None for step in steps)
                 steps.append(Step(thought_or_action=finish_text(answer, used_tools)))
+                emit(self._on_event, "answer", text=answer)
                 return ReActResult(
                     answer=answer,
                     steps=steps,
@@ -81,6 +86,14 @@ class ReActAgent:
                 if not result.is_error:
                     executed.append(call)
                 steps.append(Step(describe_turn(turn, call), observation=observation, tool_call=call))
+                emit(
+                    self._on_event,
+                    "step",
+                    thought=turn_thought(turn, call),
+                    call=call,
+                    result=result,
+                    observation=observation,
+                )
             messages.append(ToolResultMessage(results))
 
         return ReActResult(answer=None, steps=steps, success=False, tool_calls=executed, stop_reason="max_steps")

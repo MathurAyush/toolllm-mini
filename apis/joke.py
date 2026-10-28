@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import quote
+
 import requests
 
 from .base import APIResponse, BaseAPI
@@ -36,7 +38,7 @@ class JokeAPI(BaseAPI):
     def call(self, category: str = "Any") -> APIResponse:
         try:
             response = requests.get(
-                self._ENDPOINT.format(category=category),
+                self._ENDPOINT.format(category=quote(category.strip(), safe='')),
                 params={"type": "single"},
                 timeout=10,
             )

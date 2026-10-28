@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import quote
+
 import requests
 
 from .base import APIResponse, BaseAPI
@@ -44,7 +46,7 @@ class DictionaryAPI(BaseAPI):
 
     def call(self, word: str) -> APIResponse:
         try:
-            response = requests.get(self._ENDPOINT.format(word=word), timeout=10)
+            response = requests.get(self._ENDPOINT.format(word=quote(word.strip(), safe='')), timeout=10)
             response.raise_for_status()
             payload = response.json()
         except requests.RequestException as exc:

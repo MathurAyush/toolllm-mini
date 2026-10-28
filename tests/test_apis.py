@@ -15,6 +15,19 @@ def test_calculator_rejects_unsupported_syntax():
     assert not result.success
 
 
+def test_calculator_refuses_huge_powers():
+    for expression in ("9 ** 9 ** 9", "(10 ** 500) ** 3"):
+        result = CalculatorAPI().call(expression=expression)
+        assert not result.success and result.error == "Result too large."
+    assert CalculatorAPI().call(expression="2 ** 64").data == 2**64
+    assert CalculatorAPI().call(expression="2 ** -2").data == 0.25
+
+
+def test_calculator_refuses_non_finite_results():
+    result = CalculatorAPI().call(expression="1e308 * 10")
+    assert not result.success
+
+
 def test_weather_known_city():
     result = WeatherAPI().call(city="Tokyo")
     assert result.success

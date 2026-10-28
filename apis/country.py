@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import quote
+
 import requests
 
 from .base import APIResponse, BaseAPI
@@ -37,7 +39,7 @@ class CountryInfoAPI(BaseAPI):
 
     def call(self, name: str) -> APIResponse:
         try:
-            response = requests.get(self._ENDPOINT.format(name=name), timeout=10)
+            response = requests.get(self._ENDPOINT.format(name=quote(name.strip(), safe='')), timeout=10)
             response.raise_for_status()
             payload = response.json()
         except requests.RequestException as exc:

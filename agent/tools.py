@@ -57,10 +57,16 @@ def describe_call(call: ToolCall) -> str:
     return f"Action: {call.name}({args})"
 
 
+def turn_thought(turn: ModelTurn, call: ToolCall) -> str:
+    """The model's text accompanying a tool call, attached to the turn's
+    first call only."""
+    return turn.text.strip() if call is turn.tool_calls[0] else ""
+
+
 def describe_turn(turn: ModelTurn, call: ToolCall) -> str:
     """Trace text for one tool call: the model's accompanying text (if any,
     and only on the turn's first call) followed by the requested action."""
-    text = turn.text.strip() if call is turn.tool_calls[0] else ""
+    text = turn_thought(turn, call)
     return f"{text}\n{describe_call(call)}" if text else describe_call(call)
 
 

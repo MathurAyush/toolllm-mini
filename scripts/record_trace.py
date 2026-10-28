@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -25,28 +24,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from agent.llm import BaseLLM
+from agent.factory import build_llm, configured_model
 from agent.react import ReActAgent
 from apis.registry import keyless_registry
 from retriever.retriever import APIRetriever
 
 _TRACE_DIR = _ROOT / "results" / "traces"
-_PROVIDER = os.environ.get("BENCHMARK_PROVIDER", "gemini")
 _DEFAULT_INSTRUCTION = "How high above sea level is Lisbon, in feet?"
-
-
-def _build_llm() -> tuple[BaseLLM, str]:
-    if _PROVIDER == "anthropic":
-        from agent.anthropic_llm import AnthropicLLM
-
-        model = os.environ.get("BENCHMARK_MODEL", "claude-haiku-4-5-20251001")
-        return AnthropicLLM(model=model), model
-    if _PROVIDER == "gemini":
-        from agent.gemini_llm import GeminiLLM
-
-        model = os.environ.get("BENCHMARK_MODEL", "gemini-3.5-flash-lite")
-        return GeminiLLM(model=model), model
-    raise ValueError(f"Unknown BENCHMARK_PROVIDER '{_PROVIDER}' (expected 'anthropic' or 'gemini').")
 
 
 def _events(steps) -> list[dict]:
@@ -82,7 +66,7 @@ def main() -> None:
     candidates = registry.all()
     if args.top_k:
         candidates = [hit.api for hit in APIRetriever(candidates).retrieve(args.instruction, top_k=args.top_k)]
-    llm, model = _build_llm()
+    llm, model = build_llm()
     result = ReActAgent(registry=registry, llm=llm).run(args.instruction, candidate_apis=candidates)
 
     events = _events(result.steps)
@@ -90,7 +74,7 @@ def main() -> None:
         events.append({"kind": "answer", "text": result.answer})
     trace = {
         "agent": "ReAct",
-        "provider": _PROVIDER,
+        "provider": configured_model()[0],
         "model": model,
         "recorded_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "instruction": args.instruction,
