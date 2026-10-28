@@ -50,7 +50,7 @@ window.SITE_CONTENT = {
       { label: "Instruction", detail: "How high is Lisbon, in feet?" },
       { label: "Retrieve", detail: "Rank the tool pool" },
       { label: "Reason", detail: "Model plans the next call" },
-      { label: "Call tool", detail: "geocode(place='Lisbon')" },
+      { label: "Call tool", detail: "geocode('Lisbon')" },
       { label: "Observe", detail: "Real API result" },
       { label: "Answer", detail: "About 177 ft (54 m)" },
       { label: "Evaluate", detail: "Check against expected facts" },

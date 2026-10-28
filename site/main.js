@@ -369,6 +369,357 @@
 
   const PAGES = {};
 
+  // Splits a title into word spans for the one-by-one reveal, keeping the
+  // [[accent]] words.
+  function splitTitle(text) {
+    let i = 0;
+    return text
+      .split(/(\[\[.+?\]\])/)
+      .filter(Boolean)
+      .map((part) => {
+        const accent = part.startsWith("[[");
+        const words = (accent ? part.slice(2, -2) : part).split(/\s+/).filter(Boolean);
+        return words.map((w) => `<span class="w${accent ? " accent" : ""}" style="--i:${i++}">${esc(w)}</span>`).join(" ");
+      })
+      .join(" ");
+  }
+
+  const screenImg = (s) => `<img src="${s.src}" alt="${esc(s.alt)}" data-fallback loading="eager" decoding="async">`;
+
+  // Hero background: drifting points joined by faint lines, pulled slightly
+  // towards the pointer. Pauses when the tab is hidden or the hero is off
+  // screen; draws one still frame under reduced motion.
+  function heroCanvas(canvas) {
+    const ctx = canvas.getContext("2d");
+    let w = 0, h = 0, dpr = 1, points = [], visible = true, raf = 0;
+    const mouse = { x: -9999, y: -9999, tx: -9999, ty: -9999 };
+    const LINK = 130;
+
+    function resize() {
+      const r = canvas.getBoundingClientRect();
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = r.width;
+      h = r.height;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const n = Math.max(28, Math.min(90, Math.round((w * h) / 15000)));
+      points = Array.from({ length: n }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        vx: (Math.random() - 0.5) * 0.35,
+        vy: (Math.random() - 0.5) * 0.35,
+        r: Math.random() * 1.4 + 0.8,
+      }));
+      if (reduce()) draw();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, w, h);
+      mouse.x += (mouse.tx - mouse.x) * 0.05;
+      mouse.y += (mouse.ty - mouse.y) * 0.05;
+      for (const p of points) {
+        if (!reduce()) {
+          const dx = mouse.x - p.x, dy = mouse.y - p.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < 200 * 200) {
+            p.vx += dx * 0.000012;
+            p.vy += dy * 0.000012;
+          }
+          p.vx *= 0.995;
+          p.vy *= 0.995;
+          const speed = Math.hypot(p.vx, p.vy);
+          if (speed < 0.08) {
+            p.vx += (Math.random() - 0.5) * 0.04;
+            p.vy += (Math.random() - 0.5) * 0.04;
+          }
+          p.x += p.vx;
+          p.y += p.vy;
+          if (p.x < -10) p.x = w + 10;
+          if (p.x > w + 10) p.x = -10;
+          if (p.y < -10) p.y = h + 10;
+          if (p.y > h + 10) p.y = -10;
+        }
+      }
+      for (let i = 0; i < points.length; i++) {
+        const a = points[i];
+        for (let j = i + 1; j < points.length; j++) {
+          const b = points[j];
+          const d = Math.hypot(a.x - b.x, a.y - b.y);
+          if (d < LINK) {
+            ctx.strokeStyle = `rgba(25, 230, 180, ${(1 - d / LINK) * 0.28})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+          }
+        }
+        const md = Math.hypot(a.x - mouse.x, a.y - mouse.y);
+        if (md < 180) {
+          ctx.strokeStyle = `rgba(46, 232, 122, ${(1 - md / 180) * 0.35})`;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(mouse.x, mouse.y);
+          ctx.stroke();
+        }
+      }
+      for (const p of points) {
+        ctx.fillStyle = "rgba(160, 255, 225, 0.75)";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function loop() {
+      draw();
+      raf = requestAnimationFrame(loop);
+    }
+    function start() {
+      if (!raf && visible && !document.hidden && !reduce()) raf = requestAnimationFrame(loop);
+    }
+    function stop() {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    }
+
+    resize();
+    window.addEventListener("resize", debounce(resize, 200));
+    document.addEventListener("visibilitychange", () => (document.hidden ? stop() : start()));
+    if ("IntersectionObserver" in window) {
+      new IntersectionObserver(([e]) => {
+        visible = e.isIntersecting;
+        visible ? start() : stop();
+      }).observe(canvas);
+    }
+    if (finePointer) {
+      canvas.parentElement.addEventListener("pointermove", (e) => {
+        const r = canvas.getBoundingClientRect();
+        mouse.tx = e.clientX - r.left;
+        mouse.ty = e.clientY - r.top;
+        if (mouse.x < -999) {
+          mouse.x = mouse.tx;
+          mouse.y = mouse.ty;
+        }
+      });
+      canvas.parentElement.addEventListener("pointerleave", () => {
+        mouse.tx = mouse.ty = -9999;
+      });
+    }
+    start();
+  }
+
+  // Device mockups drift at different speeds while the hero scrolls away.
+  function initParallax() {
+    const layers = $$("[data-parallax]");
+    if (!layers.length || reduce()) return;
+    let queued = false;
+    const update = () => {
+      queued = false;
+      const y = window.scrollY;
+      if (y > window.innerHeight * 1.5) return;
+      layers.forEach((el) => {
+        el.style.transform = `translate3d(0, ${(-y * parseFloat(el.dataset.parallax)).toFixed(1)}px, 0)`;
+      });
+    };
+    window.addEventListener("scroll", () => {
+      if (!queued) {
+        queued = true;
+        requestAnimationFrame(update);
+      }
+    }, { passive: true });
+  }
+
+  function wrapText(text, maxChars) {
+    const words = text.split(" ");
+    const lines = [];
+    let line = "";
+    for (const word of words) {
+      if (line && (line + " " + word).length > maxChars) {
+        lines.push(line);
+        line = word;
+      } else line = line ? line + " " + word : word;
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  // Pipeline diagram: steps along an SVG path, glowing dots flowing along
+  // it, and each step lighting up as the lead dot passes.
+  function buildPipeline(el, steps) {
+    let raf = 0, visible = false, nodes = [], path = null, dots = [], total = 0, positions = [];
+    const DURATION = 9000;
+    let t0 = performance.now();
+
+    function render() {
+      const W = Math.max(280, el.clientWidth - 2);
+      const horizontal = W >= 760;
+      const n = steps.length;
+      let pts, H, labels;
+      if (horizontal) {
+        const padX = 64, y = 56;
+        const gap = (W - padX * 2) / (n - 1);
+        pts = steps.map((_, i) => [padX + i * gap, y]);
+        H = 170;
+        const maxChars = Math.max(12, Math.floor(gap / 7.4));
+        labels = steps.map((s, i) => {
+          const [x] = pts[i];
+          const detail = wrapText(s.detail, maxChars)
+            .map((l, k) => `<tspan x="${x}" dy="${k ? 16 : 0}">${esc(l)}</tspan>`)
+            .join("");
+          return `<text class="label" x="${x}" y="${y + 50}" text-anchor="middle">${esc(s.label)}</text>
+            <text class="detail" x="${x}" y="${y + 72}" text-anchor="middle">${detail}</text>`;
+        });
+      } else {
+        const x = 30, top = 30, gap = 86;
+        pts = steps.map((_, i) => [x, top + i * gap]);
+        H = top * 2 + gap * (n - 1);
+        const maxChars = Math.max(16, Math.floor((W - 80) / 7.4));
+        labels = steps.map((s, i) => {
+          const [, y] = pts[i];
+          const detail = wrapText(s.detail, maxChars)
+            .map((l, k) => `<tspan x="${x + 40}" dy="${k ? 16 : 0}">${esc(l)}</tspan>`)
+            .join("");
+          return `<text class="label" x="${x + 40}" y="${y - 4}">${esc(s.label)}</text>
+            <text class="detail" x="${x + 40}" y="${y + 16}">${detail}</text>`;
+        });
+      }
+      positions = pts;
+      const d = "M" + pts.map((p) => p.join(" ")).join(" L");
+      el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Pipeline: ${steps.map((s) => esc(s.label)).join(", ")}">
+        <defs><linearGradient id="pipeGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0fb5c9"/><stop offset="1" stop-color="#2ee87a"/></linearGradient></defs>
+        <path class="pipe-track" d="${d}"/>
+        <path class="pipe-glow" d="${d}"/>
+        ${pts.map((p, i) => `<g class="pipe-node" data-i="${i}">
+            <circle class="halo" cx="${p[0]}" cy="${p[1]}" r="20"/>
+            <circle class="ring" cx="${p[0]}" cy="${p[1]}" r="20"/>
+            <text class="num" x="${p[0]}" y="${p[1]}">${i + 1}</text>
+          </g>`).join("")}
+        ${labels.join("")}
+        <circle class="pipe-dot" r="5" cx="0" cy="0"/>
+        <circle class="pipe-dot" r="3.5" cx="0" cy="0" opacity="0.7"/>
+        <circle class="pipe-dot" r="2.5" cx="0" cy="0" opacity="0.5"/>
+      </svg>`;
+      path = $(".pipe-track", el);
+      total = path.getTotalLength();
+      nodes = $$(".pipe-node", el);
+      dots = $$(".pipe-dot", el);
+      if (reduce()) {
+        nodes.forEach((nd) => nd.classList.add("lit"));
+        dots.forEach((dot) => (dot.style.display = "none"));
+      } else frame(performance.now());
+    }
+
+    function frame(now) {
+      const base = ((now - t0) % DURATION) / DURATION;
+      dots.forEach((dot, k) => {
+        const p = path.getPointAtLength(((base - k * 0.025 + 1) % 1) * total);
+        dot.setAttribute("transform", `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})`);
+      });
+      const lead = path.getPointAtLength(base * total);
+      nodes.forEach((nd, i) => {
+        const [x, y] = positions[i];
+        nd.classList.toggle("lit", Math.hypot(lead.x - x, lead.y - y) < 46);
+      });
+    }
+
+    function loop(now) {
+      frame(now);
+      raf = requestAnimationFrame(loop);
+    }
+
+    render();
+    window.addEventListener("resize", debounce(render, 200));
+    if (reduce()) return;
+    const start = () => {
+      if (!raf && visible && !document.hidden) raf = requestAnimationFrame(loop);
+    };
+    const stop = () => {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    };
+    document.addEventListener("visibilitychange", () => (document.hidden ? stop() : start()));
+    new IntersectionObserver(([e]) => {
+      visible = e.isIntersecting;
+      if (visible) t0 = performance.now() - 0;
+      visible ? start() : stop();
+    }).observe(el);
+  }
+
+  PAGES.home = (main) => {
+    const H = C.home;
+    main.innerHTML = `
+      <section class="hero">
+        <canvas class="hero-canvas" aria-hidden="true"></canvas>
+        <div class="wrap hero-grid">
+          <div>
+            <span class="kicker hero-fade" style="--d:0s">${fill(H.eyebrow)}</span>
+            <h1>${splitTitle(H.title)}</h1>
+            <p class="lead hero-fade" style="--d:0.85s">${fill(H.subtitle)}</p>
+            <div class="btn-row hero-fade" style="--d:1.05s">
+              ${H.ctas.map((c) => `<a class="btn ${c.primary ? "btn-primary" : ""} magnetic" href="${c.href}">${esc(c.label)}${c.primary ? icon("play") : icon("arrowRight")}</a>`).join("")}
+            </div>
+          </div>
+          <div class="devices hero-fade" style="--d:0.5s" aria-label="Screenshots of the app">
+            <div class="device-layer tablet-layer" data-parallax="0.05"><div class="float"><div class="tablet"><div class="screen">${screenImg(H.screens.tablet)}</div></div></div></div>
+            <div class="device-layer phone-layer" data-parallax="0.12"><div class="float"><div class="phone"><div class="screen">${screenImg(H.screens.phone)}</div></div></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="capabilities">
+        <div class="wrap">
+          <div class="section-head center"><h2 class="h-line" data-reveal>${fill(H.capabilitiesTitle)}</h2></div>
+          <div class="grid grid-3">
+            ${H.capabilities.map((c, i) => `<article class="card tilt" data-reveal style="--i:${i % 3}">
+                <div class="icon-badge">${icon(c.icon)}</div>
+                <h3>${fill(c.title)}</h3>
+                <p>${fill(c.text)}</p>
+              </article>`).join("")}
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="pipeline">
+        <div class="wrap">
+          <div class="section-head center"><h2 class="h-line" data-reveal>${fill(H.pipelineTitle)}</h2></div>
+          <div class="card pipeline" data-reveal><div class="pipeline-svg"></div></div>
+        </div>
+      </section>
+
+      <section class="section" id="parts">
+        <div class="wrap">
+          <div class="section-head center"><h2 class="h-line" data-reveal>${fill(H.partsTitle)}</h2></div>
+          <div class="grid grid-2">
+            ${H.parts.map((p, i) => `<a class="card part-card tilt" href="${p.href}" data-reveal style="--i:${i}">
+                <span class="num-big">0${i + 1}</span>
+                <span class="kicker">${fill(p.kicker)}</span>
+                <h3>${fill(p.title)}</h3>
+                <p>${fill(p.text)}</p>
+                <span class="more">${esc(p.cta)}${icon("arrowRight")}</span>
+              </a>`).join("")}
+          </div>
+        </div>
+      </section>
+
+      <section class="section" style="padding-top:0">
+        <div class="wrap">
+          <div class="card cta-band" data-reveal>
+            <h2>${fill(H.closing.title)}</h2>
+            <p class="lead">${fill(H.closing.text)}</p>
+            <div class="btn-row">
+              ${H.ctas.map((c) => `<a class="btn ${c.primary ? "btn-primary" : ""} magnetic" href="${c.href}">${esc(c.label)}</a>`).join("")}
+            </div>
+          </div>
+        </div>
+      </section>`;
+
+    heroCanvas($(".hero-canvas", main));
+    buildPipeline($(".pipeline-svg", main), H.pipeline);
+    initParallax();
+  };
+
   // @pages
 
   // ---------------------------------------------------------------- boot

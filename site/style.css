@@ -925,12 +925,12 @@ main {
   transition: fill 0.4s;
 }
 
-.pipe-node .label {
+.pipeline .label {
   fill: var(--text);
   font: 600 15px var(--font-head);
 }
 
-.pipe-node .detail {
+.pipeline .detail {
   fill: var(--dim);
   font: 400 12.5px var(--font-mono);
 }
@@ -2270,4 +2270,8 @@ main {
   ::view-transition-new(root) {
     animation: none !important;
   }
+}
+
+.part-card .kicker {
+  align-self: flex-start;
 }
