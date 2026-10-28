@@ -743,7 +743,7 @@
       for (let k = 0; k <= 4; k++) {
         const v = (max * k) / 4;
         parts.push(`<line class="axis" x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}"/>`);
-        parts.push(`<text class="tick" x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end">${esc(spec.percent ? Math.round(v * 100) + "%" : fmt(v, { decimals: spec.decimals != null ? 1 : null }))}</text>`);
+        parts.push(`<text class="tick" x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end">${esc(spec.percent ? Math.round(v * 100) + "%" : fmt(v, { decimals: spec.decimals != null ? 2 : null }))}</text>`);
       }
 
       const gw = pw / spec.groups.length;
@@ -753,6 +753,9 @@
       const showLabels = bw >= 26;
       spec.groups.forEach((g, gi) => {
         const x0 = m.l + gi * gw + (gw - inner) / 2;
+        // A group with no values at all gets one TBD label, not one per bar.
+        const groupTbd = spec.values[gi].every((v) => v == null);
+        if (groupTbd) parts.push(`<text class="tbd-text" x="${m.l + gi * gw + gw / 2}" y="${m.t + ph * 0.55 - 8}">TBD</text>`);
         spec.series.forEach((s, si) => {
           const x = x0 + si * (bw + gap);
           const v = spec.values[gi][si];
@@ -761,7 +764,7 @@
           if (v == null) {
             const top = m.t + ph * 0.55;
             parts.push(`<rect class="tbd-bar" x="${x}" y="${top}" width="${bw}" height="${ph * 0.45}" rx="4"><title>${esc(s.name)}: not measured yet</title></rect>`);
-            parts.push(`<text class="tbd-text" x="${cx}" y="${top - 8}" font-size="${bw < 30 ? 9 : 11}">TBD</text>`);
+            if (!groupTbd) parts.push(`<text class="tbd-text" x="${cx}" y="${top - 8}">TBD</text>`);
             return;
           }
           const ci = spec.ci && spec.ci[gi] && spec.ci[gi][si];
@@ -968,6 +971,307 @@
 
     update();
   }
+
+  const callText = (t) => t.replace(/^Action:\s*/, "");
+  const clip = (t, n) => (t.length > n ? t.slice(0, n - 1) + "…" : t);
+
+  Object.assign(VISUALS, {
+    functionCalling: () => {
+      const trace = R && R.traces && R.traces[0];
+      if (!trace) return `<div class="card"><h3>Recorded trace ${TBD}</h3></div>`;
+      const rows = [];
+      const events = trace.events;
+      let calls = 0;
+      events.forEach((e, i) => {
+        if (e.kind !== "call" || calls >= 2) return;
+        calls++;
+        rows.push(`<div class="flow-msg from-model"><div class="msg"><small>Model requests</small>${esc(callText(e.text))}</div></div>`);
+        const obs = events[i + 1];
+        if (obs && obs.kind === "observation") {
+          rows.push(`<div class="flow-msg from-tool"><div class="msg"><small>Our code runs it, real result</small>${esc(clip(obs.text, 110))}</div></div>`);
+        }
+      });
+      const answer = events.find((e) => e.kind === "answer");
+      if (answer) rows.push(`<div class="flow-msg answer-msg"><div class="msg"><small>Final answer</small>${esc(answer.text)}</div></div>`);
+      return `<div class="card flow">
+        <div class="flow-lanes"><span>Model</span><span>Our code</span><span>Tool API</span></div>
+        <div class="bubble q" style="justify-self:start;max-width:100%">${esc(trace.instruction)}</div>
+        ${rows.join("")}
+        <p class="note">From a recorded run, <code>${esc(trace.source)}</code>.</p>
+      </div>`;
+    },
+
+    toolMarquee: () => {
+      const tools = (R && R.tools && R.tools.tools) || [];
+      const half = Math.ceil(tools.length / 2);
+      const chip = (t) => `<span class="chip">${icon(CATEGORY_ICONS[t.category])}${esc(t.name)}</span>`;
+      const row = (list, rev) =>
+        `<div class="marquee-row${rev ? " rev" : ""}">${list.map(chip).join("")}<span aria-hidden="true" style="display:contents">${list.map(chip).join("")}</span></div>`;
+      const cats = R && R.tools ? Object.entries(R.tools.categories).slice(0, 10) : [];
+      return `<div class="card">
+        <div class="tool-count"><span class="from">${R && R.tools ? R.tools.phase1 : TBD}</span><span class="arrow">→</span><span data-count="tools.total"></span><small>tools</small></div>
+        ${tools.length ? `<div class="marquee" data-overflow-ok>${row(tools.slice(0, half))}${row(tools.slice(half), true)}</div>` : TBD}
+        <div class="cat-list">${cats.map(([c, n]) => `<span>${esc(c)} · ${n}</span>`).join("")}</div>
+      </div>`;
+    },
+
+    benchmark: () => {
+      const b = R && R.benchmark;
+      const facts = b ? b.fact_tasks : null;
+      const live = b ? b.live_value_tasks : null;
+      const share = (v) => (b && b.total ? (100 * v) / b.total : 0);
+      const examples = b ? b.examples.filter((e) => e.difficulty === "hard" || /live/.test(e.check)).slice(0, 2) : [];
+      return `<div class="card">
+        <div class="stat-row">
+          ${["easy", "medium", "hard"].map((d) => `<div class="stat"><span class="n" data-count="benchmark.by_difficulty.${d}"></span><span class="l">${d}</span></div>`).join("")}
+        </div>
+        <div class="split-bar" role="img" aria-label="${facts} tasks checked by facts, ${live} by live values">
+          <i style="width:${share(facts)}%"></i><i style="width:${share(live)}%"></i>
+        </div>
+        <div class="legend">
+          <span><i style="background:var(--accent)"></i>${facts == null ? TBD : facts} with expected facts</span>
+          <span><i style="background:var(--amber)"></i>${live == null ? TBD : live} with a live-value rule</span>
+        </div>
+        ${examples.map((e) => `<div class="example"><q>${esc(e.instruction)}</q><div class="meta"><span class="pill diff">${esc(e.difficulty)}</span>${e.tools.map((t) => `<span class="pill">${esc(t)}</span>`).join("")}<span>check: ${esc(e.check)}</span></div></div>`).join("")}
+      </div>`;
+    },
+
+    retrieverChart: () => `<div class="card chart-card">
+        <div class="card-title-row"><h3>Retrievers on the generated tasks</h3></div>
+        <div class="chart"></div>
+        ${legend(RETRIEVER_SERIES)}
+        <p class="note">${R && R.retriever ? `${R.retriever.n_tasks} tasks, ${R.retriever.pool_size} tools, from <code>${esc(R.retriever.source)}</code>. ` : ""}Dashed bars are not built yet.</p>
+      </div>`,
+
+    dfsdtTree: (s) => `<div class="card tree">
+        <div class="tree-svg"></div>
+        <div class="tree-controls">
+          <span class="tree-status" aria-live="polite"></span>
+          <button class="btn btn-sm magnetic tree-replay" type="button">${icon("restart")}Replay</button>
+        </div>
+        <p class="note">${fill(s.treeNote)}</p>
+      </div>`,
+
+    ciChart: () => `<div class="grid" style="gap:16px">
+        <div class="card chart-card">
+          <div class="card-title-row"><h3>Phase 1, with 95% intervals</h3>${PROV}</div>
+          <div class="chart" data-chart="ci"></div>
+          ${legend(AGENT_SERIES)}
+        </div>
+        <div class="card chart-card">
+          <div class="card-title-row"><h3>Verified run on the new benchmark</h3>${R && R.verified ? "" : TBD}</div>
+          <div class="chart" data-chart="verified"></div>
+        </div>
+      </div>`,
+
+    conclusion: (s) => `<div class="grid grid-3">${s.columns
+      .map((c, i) => `<article class="card col-card tilt ${["done", "limits", "next"][i]}" data-reveal style="--i:${i + 2}">
+          <h3>${icon(["check", "x", "arrowRight"][i])}${esc(c.title)}</h3>
+          <ul>${c.items.map((it) => `<li>${fill(it)}</li>`).join("")}</ul>
+        </article>`)
+      .join("")}</div>`,
+  });
+
+  const RETRIEVER_SERIES = [
+    { name: "Top-1", color: "#19e6b4" },
+    { name: "Recall@3", color: "#7c9cff" },
+    { name: "NDCG@5", color: "#e7f59e" },
+  ];
+
+  function retrieverSpec() {
+    const list = (R && R.retriever && R.retriever.retrievers) || [];
+    return {
+      groups: list.map((r) => r.name),
+      series: RETRIEVER_SERIES,
+      values: list.map((r) => [r.top1, r.recall_at_3, r.ndcg_at_5]),
+      decimals: 2,
+      max: 1,
+      ariaLabel: "Top-1, recall at 3 and NDCG at 5 for each retriever",
+    };
+  }
+
+  // Runs `rows` of a flow one after another while visible, then starts over.
+  function initFlow(el) {
+    const rows = $$(".flow-msg", el);
+    if (reduce()) return rows.forEach((r) => r.classList.add("on"));
+    let i = 0, timer = 0, visible = false;
+    const tick = () => {
+      if (!visible) return;
+      if (i < rows.length) {
+        rows[i++].classList.add("on");
+        timer = setTimeout(tick, 1100);
+      } else {
+        timer = setTimeout(() => {
+          rows.forEach((r) => r.classList.remove("on"));
+          i = 0;
+          timer = setTimeout(tick, 700);
+        }, 3200);
+      }
+    };
+    new IntersectionObserver(([e]) => {
+      visible = e.isIntersecting;
+      clearTimeout(timer);
+      if (visible) tick();
+    }, { threshold: 0.3 }).observe(el);
+  }
+
+  // DFSDT tree: one branch fails, turns red and fades, the search backtracks
+  // to the root and a second branch succeeds down to the answer.
+  const TREE_LAYOUTS = {
+    wide: {
+      W: 640, H: 520, font: 15,
+      nodes: {
+        r: [320, 40, 300], a: [150, 150, 260], b: [490, 150, 250],
+        c: [490, 258, 270], d: [470, 366, 300], ans: [470, 470, 250],
+      },
+    },
+    narrow: {
+      W: 360, H: 540, font: 14,
+      nodes: {
+        r: [180, 40, 330], a: [92, 150, 170], b: [270, 150, 170],
+        c: [200, 262, 300], d: [180, 374, 330], ans: [180, 486, 250],
+      },
+    },
+  };
+  const TREE_TEXT = {
+    r: ["How high is Lisbon, in feet?", ""],
+    a: ["elevation(?, ?)", "no coordinates yet"],
+    b: ["geocode('Lisbon')", "38.73, -9.15"],
+    c: ["elevation(38.73, -9.15)", "54 m"],
+    d: ["unit_conversion(54 m → ft)", "177.2 ft"],
+    ans: ["Answer: about 177 ft", ""],
+  };
+  const TREE_EDGES = [["r", "a"], ["r", "b"], ["b", "c"], ["c", "d"], ["d", "ans"]];
+
+  function buildTree(card) {
+    const host = $(".tree-svg", card);
+    const status = $(".tree-status", card);
+    let timers = [], layout = null, played = false;
+    const NH = 56;
+
+    function render() {
+      const narrow = host.clientWidth < 520;
+      layout = TREE_LAYOUTS[narrow ? "narrow" : "wide"];
+      const N = layout.nodes;
+      const edges = TREE_EDGES.map(([p, c]) => {
+        const [x1, y1] = [N[p][0], N[p][1] + NH / 2];
+        const [x2, y2] = [N[c][0], N[c][1] - NH / 2];
+        const len = Math.hypot(x2 - x1, y2 - y1);
+        const deg = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
+        return `<g class="edge" data-e="${p}-${c}"><g transform="translate(${x1} ${y1}) rotate(${deg.toFixed(2)})"><g class="grow"><line x1="0" y1="0" x2="${len.toFixed(1)}" y2="0"/></g></g></g>`;
+      });
+      const nodes = Object.entries(N).map(([id, [x, y, w]]) => {
+        const [label, sub] = TREE_TEXT[id];
+        return `<g class="node${id === "ans" ? " answer" : ""}" data-n="${id}">
+          <rect x="${x - w / 2}" y="${y - NH / 2}" width="${w}" height="${NH}" rx="12"/>
+          <text x="${x}" y="${sub ? y - 9 : y}" font-size="${layout.font}">${esc(label)}</text>
+          <text class="sub" x="${x}" y="${y + 13}">${esc(sub)}</text>
+        </g>`;
+      });
+      host.innerHTML = `<svg viewBox="0 0 ${layout.W} ${layout.H}" role="img" aria-label="Search tree: a failed branch is abandoned and a second branch reaches the answer">
+        ${edges.join("")}${nodes.join("")}
+        <circle class="cursor" r="7" cx="0" cy="0" style="opacity:0"/>
+      </svg>`;
+    }
+
+    const node = (id) => $(`[data-n="${id}"]`, host);
+    const edge = (id) => $(`[data-e="${id}"]`, host);
+    const setNode = (id, cls) => {
+      const n = node(id);
+      n.classList.remove("trying", "good", "bad");
+      n.classList.add("shown");
+      if (cls) n.classList.add(cls);
+    };
+    const drawEdge = (id, cls) => {
+      const e = edge(id);
+      e.classList.add("drawn");
+      if (cls) e.classList.add(cls);
+    };
+    const moveCursor = (id, end) => {
+      const c = $(".cursor", host);
+      const [x, y] = layout.nodes[id];
+      c.style.transform = `translate(${x}px, ${y + (end === "top" ? -NH / 2 : NH / 2)}px)`;
+      c.style.opacity = "1";
+    };
+
+    const STEPS = [
+      [0, () => { setNode("r"); status.textContent = "Start from the instruction."; }],
+      [700, () => drawEdge("r-a")],
+      [450, () => { setNode("a", "trying"); status.textContent = "Branch 1: elevation, but the coordinates are unknown."; }],
+      [1400, () => {
+        setNode("a", "bad");
+        $(".sub", node("a")).textContent = "error: no latitude";
+        edge("r-a").classList.add("bad");
+        status.textContent = "The call fails.";
+      }],
+      [1400, () => {
+        node("a").classList.add("faded");
+        edge("r-a").classList.add("faded");
+        const c = $(".cursor", host);
+        c.style.transition = "none";
+        moveCursor("a", "top");
+        c.getBoundingClientRect();
+        c.style.transition = "";
+        status.textContent = "Drop the branch and backtrack to the parent.";
+      }],
+      [120, () => moveCursor("r", "bottom")],
+      [1100, () => drawEdge("r-b")],
+      [450, () => { setNode("b", "trying"); status.textContent = "Branch 2: geocode('Lisbon')."; }],
+      [900, () => { setNode("b", "good"); edge("r-b").classList.add("good"); $(".cursor", host).style.opacity = "0"; status.textContent = "Coordinates found: 38.73, -9.15."; }],
+      [700, () => drawEdge("b-c", "good")],
+      [450, () => { setNode("c", "good"); status.textContent = "elevation(38.73, -9.15) returns 54 m."; }],
+      [900, () => drawEdge("c-d", "good")],
+      [450, () => { setNode("d", "good"); status.textContent = "unit_conversion returns 177.2 ft."; }],
+      [900, () => drawEdge("d-ans", "good")],
+      [450, () => { setNode("ans", "good"); status.textContent = "Answer found: about 177 ft."; }],
+    ];
+
+    function play() {
+      timers.forEach(clearTimeout);
+      timers = [];
+      render();
+      played = true;
+      if (reduce()) {
+        STEPS.forEach(([, fn]) => fn());
+        $(".cursor", host).style.opacity = "0";
+        return;
+      }
+      let at = 300;
+      STEPS.forEach(([delay, fn]) => {
+        at += delay;
+        timers.push(setTimeout(fn, at));
+      });
+    }
+
+    render();
+    status.textContent = "Scroll here to start.";
+    onVisible(card, play, 0.45);
+    $(".tree-replay", card).addEventListener("click", play);
+    let lastNarrow = host.clientWidth < 520;
+    window.addEventListener("resize", debounce(() => {
+      const narrow = host.clientWidth < 520;
+      if (narrow !== lastNarrow) {
+        lastNarrow = narrow;
+        if (played) {
+          render();
+          STEPS.forEach(([, fn]) => fn());
+          $(".cursor", host).style.opacity = "0";
+        } else render();
+      }
+    }, 200));
+  }
+
+  Object.assign(VISUAL_INIT, {
+    functionCalling: (el) => initFlow(el),
+    retrieverChart: (el) => barChart($(".chart", el), retrieverSpec()),
+    dfsdtTree: (el) => buildTree($(".tree", el)),
+    ciChart: (el) => {
+      barChart($('[data-chart="ci"]', el), passRateSpec(R && R.baseline, true));
+      barChart($('[data-chart="verified"]', el), { ...passRateSpec(R && R.verified, true), height: 190 });
+    },
+  });
+
+  PAGES.extension = (main) => renderDeck(main, C.slides.filter((s) => s.n >= 4), { prev: C.extensionPrev });
 
   PAGES.existing = (main) => renderDeck(main, C.slides.filter((s) => s.n <= 3), { next: C.existingNext });
 

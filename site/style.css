@@ -1694,9 +1694,11 @@ main {
 
 /* ------------------------------------------------------------ DFSDT tree */
 
-.tree svg {
+.tree-svg svg {
   width: 100%;
   height: auto;
+  max-height: min(58vh, 540px);
+  margin: 0 auto;
 }
 
 .tree .edge line {
@@ -2288,4 +2290,19 @@ main {
   .answer-pair {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+.col-card h3 svg {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  color: var(--accent);
+}
+
+.col-card.limits h3 svg {
+  color: var(--amber);
+}
+
+.col-card.next h3 svg {
+  color: var(--accent-3);
 }
