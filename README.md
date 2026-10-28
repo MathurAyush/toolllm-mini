@@ -77,7 +77,8 @@ win-rate metrics.
 - `data/` — Sample instructions and expected keywords for quick local
   checks, plus `benchmark_instructions.json`: 19 test instructions of
   varying complexity (`easy`/`medium`/`hard`, needing 1-3 APIs) used by
-  `scripts/run_benchmark.py`.
+  `scripts/run_benchmark.py`, and `benchmark.jsonl`, a larger generated
+  benchmark (see below).
 - `results/` — Output of `scripts/run_benchmark.py`: a per-instruction
   CSV (`benchmark_results.csv`), a ReAct-vs-DFSDT pass-rate comparison
   table (`comparison_table.md`), and a bar chart
@@ -115,6 +116,46 @@ optional free key from the same `.env` file for higher rate limits:
 `NEWSAPI_KEY` for the two key-only wrappers. `.env.example` lists them
 all. Keys are read from the environment only, never passed as tool
 arguments, and `.env` is never committed.
+
+## Generating a benchmark
+
+`scripts/generate_benchmark.py` writes `data/benchmark.jsonl` (logic in
+`eval/benchmark_generator.py`):
+
+```bash
+python scripts/generate_benchmark.py --per-difficulty 22 --seed 0
+```
+
+Each round samples 1-3 related tools from `keyless_registry()` (linked
+because one's output feeds the other's input, or sharing a category),
+shows the model their registry entries, and asks for realistic
+instructions that need them, the tools each one needs, and a reference
+plan of tool calls (`{s1.latitude}` passes an earlier result into a
+later call). Tools whose output is random or changes by the second
+(jokes, the ISS position, the latest news) are left out of the pool.
+
+Every candidate is then filtered. Duplicates (same plan, or 80% word
+overlap with an accepted instruction) are dropped, and so are
+instructions that list or name tools that do not exist. A task is also
+dropped when its listed tools differ from its plan, or when the plan
+does not run against the real APIs: bad arguments, a failed call, or an
+answer path that is not in the output.
+
+Each surviving task is labelled `easy` (1 tool), `medium` (2 independent
+tools) or `hard` (3 tools, or a call using an earlier call's output). It
+gets one of two checks:
+
+- `expected_facts`: strings a correct answer must contain. They are the
+  answer value plus the model's facts, and every one is checked against
+  the real tool output.
+- `expected_value`: used when the plan touches live data (exchange
+  rates, crypto prices, forecasts, air quality, GitHub counts). It stores
+  a check rule such as "within 5% of the live tool result", along with
+  the plan that produces that result.
+
+`eval.benchmark_generator.check_answer` grades an answer either way. The
+tool groups and the stratified 70/30 `test`/`dev` split are drawn from
+`--seed`.
 
 ## Design notes
 
