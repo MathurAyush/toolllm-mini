@@ -778,7 +778,10 @@
           if (showLabels) parts.push(`<text class="vlabel" style="--d:${d}" x="${cx}" y="${top - 7}">${esc(label(v))}</text>`);
         });
         const lines = wrapText(g, Math.max(6, Math.floor(gw / 7.6)));
-        parts.push(`<text class="glabel" x="${m.l + gi * gw + gw / 2}" y="${H - m.b + 20}">${lines
+        // Shrink the label when its longest word is wider than the group.
+        const longest = Math.max(...lines.map((l) => l.length));
+        const fs = Math.max(8, Math.min(13, (gw - 10) / (longest * 0.7)));
+        parts.push(`<text class="glabel" x="${m.l + gi * gw + gw / 2}" y="${H - m.b + 20}" style="font-size:${fs.toFixed(1)}px">${lines
           .slice(0, 2)
           .map((l, k) => `<tspan x="${m.l + gi * gw + gw / 2}" dy="${k ? 15 : 0}">${esc(l)}</tspan>`)
           .join("")}</text>`);
@@ -1274,6 +1277,210 @@
   PAGES.extension = (main) => renderDeck(main, C.slides.filter((s) => s.n >= 4), { prev: C.extensionPrev });
 
   PAGES.existing = (main) => renderDeck(main, C.slides.filter((s) => s.n <= 3), { next: C.existingNext });
+
+  // ---------------------------------------------------------------- results
+
+  const TRACE_LABELS = { instruction: "Instruction", thought: "Thought", call: "Tool call", observation: "Observation", answer: "Answer" };
+
+  // Replays a recorded trace row by row with a typewriter effect. Under
+  // reduced motion each row appears whole.
+  function tracePlayer(card, trace) {
+    const body = $(".trace-body", card);
+    const playBtn = $(".trace-play", card);
+    const stepEl = $(".trace-step", card);
+    const events = [{ kind: "instruction", text: trace.instruction }].concat(
+      trace.events.map((e) => ({ kind: e.kind, text: e.kind === "call" ? callText(e.text) : e.text }))
+    );
+    let idx = 0, chars = 0, playing = false, raf = 0, wait = 0, txt = null;
+
+    const setButton = () => {
+      playBtn.innerHTML = playing ? `${icon("pause")}Pause` : `${icon("play")}${idx >= events.length ? "Replay" : "Play"}`;
+      playBtn.setAttribute("aria-pressed", String(playing));
+    };
+    const setStep = () => {
+      stepEl.textContent = `Step ${Math.min(idx + 1, events.length)} / ${events.length}`;
+    };
+
+    function frame(now) {
+      if (!playing) return;
+      if (idx >= events.length) {
+        playing = false;
+        setButton();
+        return;
+      }
+      if (now >= wait) {
+        const e = events[idx];
+        if (!txt) {
+          body.insertAdjacentHTML("beforeend", `<div class="trace-row t-${e.kind}"><span class="lbl">${TRACE_LABELS[e.kind] || e.kind}</span><span class="txt"></span></div>`);
+          txt = body.lastElementChild.querySelector(".txt");
+          chars = 0;
+          setStep();
+        }
+        chars = reduce() ? e.text.length : chars + (e.kind === "observation" ? 6 : 2);
+        if (chars >= e.text.length) {
+          txt.textContent = e.text;
+          txt = null;
+          idx++;
+          wait = now + (reduce() ? 900 : 550);
+        } else {
+          txt.innerHTML = `${esc(e.text.slice(0, chars))}<span class="caret"></span>`;
+        }
+      }
+      raf = requestAnimationFrame(frame);
+    }
+
+    const play = () => {
+      if (idx >= events.length) restart(false);
+      playing = true;
+      setButton();
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(frame);
+    };
+    const pause = () => {
+      playing = false;
+      cancelAnimationFrame(raf);
+      setButton();
+    };
+    function restart(autoplay = true) {
+      cancelAnimationFrame(raf);
+      body.innerHTML = "";
+      idx = 0;
+      txt = null;
+      wait = 0;
+      setStep();
+      if (autoplay) play();
+    }
+
+    playBtn.addEventListener("click", () => (playing ? pause() : play()));
+    $(".trace-restart", card).addEventListener("click", () => restart(true));
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden && playing) pause();
+    });
+    setStep();
+    setButton();
+    onVisible(card, play, 0.35);
+  }
+
+  PAGES.results = (main) => {
+    const P = C.results;
+    const trace = R && R.traces && R.traces[0];
+    const b = R && R.benchmark;
+    const video = R && R.media && R.media.demo_video;
+    const statLabel = (l) => (/\(provisional\)/.test(l) ? `${esc(l.replace(/\s*\(provisional\)/, ""))} ${PROV}` : esc(l));
+
+    main.innerHTML = `
+      <section class="page-hero">
+        <div class="wrap">
+          <span class="kicker" data-reveal>Results</span>
+          <h1 class="h-line" data-reveal style="--i:1">${fill(P.title)}</h1>
+          <p class="lead" data-reveal style="--i:2">${fill(P.intro)}${R ? ` Exported ${esc(R.generated_at.slice(0, 10))}.` : ` ${TBD}`}</p>
+        </div>
+      </section>
+
+      <section class="section" style="padding-top:20px">
+        <div class="wrap">
+          <div class="stats-grid">
+            ${P.stats.map((s, i) => `<div class="stat card" data-reveal style="--i:${i}">
+                <span class="n" data-count="${s.value}"${s.percent ? ' data-format="pct"' : ""}></span>
+                <span class="l">${statLabel(s.label)}</span>
+              </div>`).join("")}
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="charts" style="padding-top:0">
+        <div class="wrap">
+          <div class="section-head"><h2 class="h-line" data-reveal>${fill(P.chartsTitle)}</h2></div>
+          <div class="grid grid-2 charts-grid">
+            <div class="card chart-card" data-reveal>
+              <div class="card-title-row"><h3>${esc(P.baselineTitle)}</h3>${PROV}</div>
+              <div class="chart" data-chart="baseline"></div>
+              ${legend(AGENT_SERIES)}
+              <p class="note">${fill(P.baselineNote)}</p>
+            </div>
+            <div class="card chart-card" data-reveal style="--i:1">
+              <div class="card-title-row"><h3>${esc(P.verifiedTitle)}</h3>${R && R.verified ? "" : TBD}</div>
+              <div class="chart" data-chart="verified"></div>
+              ${legend(AGENT_SERIES)}
+            </div>
+            <div class="card chart-card" data-reveal>
+              <div class="card-title-row"><h3>${esc(P.retrieverTitle)}</h3></div>
+              <div class="chart" data-chart="retriever"></div>
+              ${legend(RETRIEVER_SERIES)}
+              <p class="note">${R && R.retriever ? `${R.retriever.n_tasks} tasks over ${R.retriever.pool_size} tools. ` : ""}Dashed bars are not built yet.</p>
+            </div>
+            <div class="card chart-card" data-reveal style="--i:1">
+              <div class="card-title-row"><h3>${esc(P.benchmarkTitle)}</h3></div>
+              <div class="chart" data-chart="benchmark"></div>
+              <div class="split-bar"><i style="width:${b && b.total ? (100 * b.fact_tasks) / b.total : 0}%"></i><i style="width:${b && b.total ? (100 * b.live_value_tasks) / b.total : 0}%"></i></div>
+              <div class="legend">
+                <span><i style="background:var(--accent)"></i>${b ? b.fact_tasks : TBD} with expected facts</span>
+                <span><i style="background:var(--amber)"></i>${b ? b.live_value_tasks : TBD} with a live-value rule</span>
+                <span>${b ? `${b.by_split.test} test / ${b.by_split.dev} dev` : ""}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="demo">
+        <div class="wrap">
+          <div class="section-head"><h2 class="h-line" data-reveal>${fill(P.traceTitle)}</h2><p class="lead" data-reveal style="--i:1">${fill(P.traceIntro)}</p></div>
+          ${trace ? `<div class="card trace" data-reveal>
+              <div class="trace-head">
+                <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
+                <span class="trace-step mono"></span>
+                <div class="btn-row">
+                  <button class="btn btn-sm btn-primary trace-play" type="button"></button>
+                  <button class="btn btn-sm trace-restart" type="button">${icon("restart")}Restart</button>
+                </div>
+              </div>
+              <div class="trace-body" aria-live="polite"></div>
+              <div class="trace-meta">${esc(trace.agent)} agent · stop reason: ${esc(trace.stop_reason)} · recorded ${esc(trace.recorded_at.slice(0, 10))} · <code>${esc(trace.source)}</code></div>
+            </div>` : `<div class="card">${TBD} No recorded trace in results/traces/ yet.</div>`}
+
+          <div class="section-head" style="margin-top:clamp(56px,7vw,96px)"><h2 class="h-line" data-reveal>${fill(P.videoTitle)}</h2></div>
+          <div class="card video-frame" data-reveal>
+            ${video
+              ? `<video controls preload="metadata" playsinline poster="${P.video.poster}"><source src="${video}" type="video/mp4"></video>`
+              : `<div class="video-placeholder"><div class="play-ring">${icon("play")}</div><p>${esc(P.videoMissing)}</p>${TBD}</div>`}
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="screens" style="padding-top:0">
+        <div class="wrap">
+          <div class="section-head"><h2 class="h-line" data-reveal>${fill(P.screensTitle)}</h2></div>
+          <div class="shots">
+            ${P.screens.map((s, i) => `<figure class="card shot tilt" data-reveal style="--i:${i}">
+                <img src="${s.src}" alt="${esc(s.caption)}" data-fallback loading="lazy" decoding="async">
+                <figcaption>${esc(s.caption)}</figcaption>
+              </figure>`).join("")}
+          </div>
+        </div>
+      </section>`;
+
+    barChart($('[data-chart="baseline"]', main), passRateSpec(R && R.baseline, true));
+    barChart($('[data-chart="verified"]', main), passRateSpec(R && R.verified, true));
+    barChart($('[data-chart="retriever"]', main), retrieverSpec());
+    barChart($('[data-chart="benchmark"]', main), {
+      groups: ["Easy", "Medium", "Hard"],
+      series: [{ name: "Tasks", color: "#19e6b4" }],
+      values: ["easy", "medium", "hard"].map((d) => [b ? b.by_difficulty[d] : null]),
+      // Whole-number ticks: the axis top is the next multiple of 4.
+      max: b ? Math.ceil(Math.max(4, ...Object.values(b.by_difficulty)) / 4) * 4 : 4,
+      height: 230,
+      ariaLabel: "Generated tasks per difficulty",
+    });
+    if (trace) tracePlayer($(".trace", main), trace);
+    const vid = $("video", main);
+    if (vid) {
+      // If the file goes missing after export, fall back to the placeholder.
+      $("source", vid).addEventListener("error", () => {
+        vid.outerHTML = `<div class="video-placeholder"><div class="play-ring">${icon("play")}</div><p>${esc(P.videoMissing)}</p>${TBD}</div>`;
+      });
+    }
+  };
 
   // @pages
 

@@ -1933,36 +1933,36 @@ main {
   white-space: pre-wrap;
 }
 
-.trace-row.instruction .lbl {
+.trace-row.t-instruction .lbl {
   color: var(--text);
 }
 
-.trace-row.thought .lbl {
+.trace-row.t-thought .lbl {
   color: #b7a6ff;
   border-color: rgba(183, 166, 255, 0.4);
 }
 
-.trace-row.call .lbl {
+.trace-row.t-call .lbl {
   color: var(--accent);
   border-color: rgba(25, 230, 180, 0.4);
 }
 
-.trace-row.observation .lbl {
+.trace-row.t-observation .lbl {
   color: var(--amber);
   border-color: rgba(255, 200, 87, 0.4);
 }
 
-.trace-row.observation .txt {
+.trace-row.t-observation .txt {
   color: var(--muted);
 }
 
-.trace-row.answer .lbl {
+.trace-row.t-answer .lbl {
   color: #02150e;
   background: var(--accent);
   border-color: var(--accent);
 }
 
-.trace-row.answer .txt {
+.trace-row.t-answer .txt {
   color: var(--text);
   font-family: var(--font-body);
   font-size: 1.05rem;
@@ -2305,4 +2305,10 @@ main {
 
 .col-card.next h3 svg {
   color: var(--accent-3);
+}
+
+@media (max-width: 960px) {
+  .charts-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
