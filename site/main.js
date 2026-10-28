@@ -720,6 +720,257 @@
     initParallax();
   };
 
+  // ---------------------------------------------------------------- charts
+
+  // Grouped SVG bar chart sized to its container, with optional confidence
+  // interval whiskers. A null value is drawn as a dashed TBD bar. Bars grow
+  // (scaleY) when the chart scrolls into view.
+  function barChart(el, spec) {
+    const render = () => {
+      const W = Math.max(260, Math.floor(el.clientWidth));
+      const H = spec.height || Math.round(Math.min(360, Math.max(250, W * 0.52)));
+      const m = { l: 44, r: 8, t: 28, b: 48 };
+      const pw = W - m.l - m.r;
+      const ph = H - m.t - m.b;
+      const ns = spec.series.length;
+      const all = spec.values.flat().filter((v) => v != null);
+      const ciTops = (spec.ci || []).flat().filter(Boolean).map((c) => c[1]);
+      const max = spec.max || niceMax(Math.max(1, ...all, ...ciTops));
+      const y = (v) => m.t + ph - (v / max) * ph;
+      const label = (v) => fmt(v, { percent: spec.percent, decimals: spec.decimals });
+      const parts = [];
+
+      for (let k = 0; k <= 4; k++) {
+        const v = (max * k) / 4;
+        parts.push(`<line class="axis" x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}"/>`);
+        parts.push(`<text class="tick" x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end">${esc(spec.percent ? Math.round(v * 100) + "%" : fmt(v, { decimals: spec.decimals != null ? 1 : null }))}</text>`);
+      }
+
+      const gw = pw / spec.groups.length;
+      const gap = 5;
+      const bw = Math.min(46, (gw * 0.76 - (ns - 1) * gap) / ns);
+      const inner = bw * ns + (ns - 1) * gap;
+      const showLabels = bw >= 26;
+      spec.groups.forEach((g, gi) => {
+        const x0 = m.l + gi * gw + (gw - inner) / 2;
+        spec.series.forEach((s, si) => {
+          const x = x0 + si * (bw + gap);
+          const v = spec.values[gi][si];
+          const d = ((gi * ns + si) * 0.07).toFixed(2);
+          const cx = x + bw / 2;
+          if (v == null) {
+            const top = m.t + ph * 0.55;
+            parts.push(`<rect class="tbd-bar" x="${x}" y="${top}" width="${bw}" height="${ph * 0.45}" rx="4"><title>${esc(s.name)}: not measured yet</title></rect>`);
+            parts.push(`<text class="tbd-text" x="${cx}" y="${top - 8}" font-size="${bw < 30 ? 9 : 11}">TBD</text>`);
+            return;
+          }
+          const ci = spec.ci && spec.ci[gi] && spec.ci[gi][si];
+          parts.push(`<rect class="bar" style="--d:${d}" x="${x}" y="${y(v)}" width="${bw}" height="${Math.max(0, m.t + ph - y(v))}" rx="4" fill="${s.color}"><title>${esc(`${g}, ${s.name}: ${label(v)}${ci ? ` (95% CI ${label(ci[0])} to ${label(ci[1])})` : ""}`)}</title></rect>`);
+          let top = y(v);
+          if (ci) {
+            const cap = Math.min(8, bw / 3);
+            parts.push(`<g class="ci" style="--d:${d}"><line x1="${cx}" x2="${cx}" y1="${y(ci[0])}" y2="${y(ci[1])}"/><line x1="${cx - cap}" x2="${cx + cap}" y1="${y(ci[0])}" y2="${y(ci[0])}"/><line x1="${cx - cap}" x2="${cx + cap}" y1="${y(ci[1])}" y2="${y(ci[1])}"/></g>`);
+            top = Math.min(top, y(ci[1]));
+          }
+          if (showLabels) parts.push(`<text class="vlabel" style="--d:${d}" x="${cx}" y="${top - 7}">${esc(label(v))}</text>`);
+        });
+        const lines = wrapText(g, Math.max(6, Math.floor(gw / 7.6)));
+        parts.push(`<text class="glabel" x="${m.l + gi * gw + gw / 2}" y="${H - m.b + 20}">${lines
+          .slice(0, 2)
+          .map((l, k) => `<tspan x="${m.l + gi * gw + gw / 2}" dy="${k ? 15 : 0}">${esc(l)}</tspan>`)
+          .join("")}</text>`);
+      });
+
+      el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(spec.ariaLabel || "Bar chart")}">${parts.join("")}</svg>`;
+    };
+    render();
+    let lastW = el.clientWidth;
+    window.addEventListener("resize", debounce(() => {
+      if (Math.abs(el.clientWidth - lastW) > 4) {
+        lastW = el.clientWidth;
+        render();
+      }
+    }, 200));
+  }
+
+  function niceMax(v) {
+    const p = Math.pow(10, Math.floor(Math.log10(v)));
+    const n = v / p;
+    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
+  }
+
+  const legend = (series) =>
+    `<div class="chart-legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("")}</div>`;
+
+  const AGENT_SERIES = [
+    { name: "ReAct", color: "#19e6b4" },
+    { name: "DFSDT", color: "#7c9cff" },
+  ];
+
+  // Pass-rate chart spec from a pass_rates() block of results.json.
+  function passRateSpec(block, withCi) {
+    const groups = block ? block.groups : ["easy", "medium", "hard", "overall"].map((c) => ({ complexity: c, n: null }));
+    return {
+      groups: groups.map((g) => `${g.complexity[0].toUpperCase()}${g.complexity.slice(1)}${g.n ? ` (${g.n})` : ""}`),
+      series: AGENT_SERIES,
+      values: groups.map((g) => (block ? [g.react.rate, g.dfsdt.rate] : [null, null])),
+      ci: withCi && block ? groups.map((g) => [[g.react.ci_low, g.react.ci_high], [g.dfsdt.ci_low, g.dfsdt.ci_high]]) : null,
+      percent: true,
+      max: 1,
+      ariaLabel: "Pass rate by difficulty for ReAct and DFSDT",
+    };
+  }
+
+  // ---------------------------------------------------------------- slides
+
+  // Each visual returns the HTML for the right-hand side of a slide; an
+  // optional init runs once the HTML is in the page.
+  const VISUALS = {
+    problem: (s) => {
+      const c = s.compare;
+      return `<div class="card chat tilt">
+        <div class="bubble q" data-reveal style="--i:2">${esc(c.question)}</div>
+        <div class="answer-pair">
+          <div class="answer bad" data-reveal style="--i:4"><div class="tag">${icon("x")}${esc(c.guess.label)}</div><div class="val">${esc(c.guess.text)}</div></div>
+          <div class="answer good" data-reveal style="--i:6"><div class="tag">${icon("check")}${esc(c.tool.label)}</div><div class="val">${esc(c.tool.text)}</div></div>
+        </div>
+        <p class="note" data-reveal style="--i:7">${fill(c.note)}</p>
+      </div>`;
+    },
+
+    existing: (s) => {
+      const block = (b, i) => `<article class="card tilt" data-reveal style="--i:${i + 2}">
+          <h3>${fill(b.title)}</h3>
+          <dl class="def-list">${b.items.map((it) => `<div><dt>${esc(it.k)}</dt><dd>${fill(it.v)}</dd></div>`).join("")}</dl>
+        </article>`;
+      return `<div class="grid grid-2">${block(s.paper, 0)}${block(s.baseline, 1)}</div>`;
+    },
+
+    baselineChart: (s) => `<div class="card chart-card">
+        <div class="card-title-row"><h3>Pass rate by difficulty</h3>${PROV}</div>
+        <div class="chart" data-chart="baseline"></div>
+        ${legend(AGENT_SERIES)}
+        <p class="note">${fill(s.chartNote)}</p>
+      </div>`,
+  };
+
+  const VISUAL_INIT = {
+    baselineChart: (el) => barChart($(".chart", el), passRateSpec(R && R.baseline, false)),
+  };
+
+  function renderDeck(main, slides, links) {
+    const first = slides[0].n;
+    const last = slides[slides.length - 1].n;
+    main.innerHTML = slides
+      .map((s) => {
+        const stack = !s.bullets;
+        let foot = "";
+        if (s.n === last && links.next) {
+          foot = `<div class="slide-foot" data-reveal style="--i:6"><a class="btn btn-primary magnetic" href="${links.next.href}">${esc(links.next.label)}${icon("arrowRight")}</a></div>`;
+        } else if (s.n === first && links.prev) {
+          foot = `<div class="slide-foot" data-reveal style="--i:6"><a class="btn magnetic" href="${links.prev.href}">${icon("arrowLeft")}${esc(links.prev.label)}</a></div>`;
+        }
+        return `<section class="slide" id="slide-${s.n}" data-slide="${s.n}" aria-label="Slide ${s.n} of ${C.slideTotal}">
+          <div class="wrap">
+            <div class="slide-grid${stack ? " stack" : ""}">
+              <div class="slide-text">
+                <span class="kicker" data-reveal>${esc(s.kicker)} <span class="slide-num">${pad(s.n)}</span></span>
+                <h2 class="h-line" data-reveal style="--i:1">${fill(s.title)}</h2>
+                ${s.bullets ? `<ul class="bullets">${s.bullets.map((b, k) => `<li data-reveal style="--i:${k + 2}">${fill(b)}</li>`).join("")}</ul>` : ""}
+                ${stack ? "" : foot}
+              </div>
+              <div class="visual" data-visual="${s.visual}">${VISUALS[s.visual](s)}</div>
+              ${stack ? foot : ""}
+            </div>
+          </div>
+          ${s.n === first ? `<div class="slide-hint" aria-hidden="true"><span class="key">↑</span><span class="key">↓</span> or <span class="key">Space</span> to move</div>` : ""}
+        </section>`;
+      })
+      .join("");
+    $$(".visual", main).forEach((el) => {
+      const init = VISUAL_INIT[el.dataset.visual];
+      if (init) init(el, slides.find((s) => s.visual === el.dataset.visual));
+    });
+    initDeck($$(".slide", main), links);
+  }
+
+  // Slide navigation: arrow keys, Page Up/Down and Space move one slide;
+  // past either end of the page it continues on the other slide page.
+  function initDeck(slides, links) {
+    document.documentElement.classList.add("slides-page");
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<nav class="slide-hud" aria-label="Slide controls">
+        <button class="hud-btn" type="button" data-dir="-1" aria-label="Previous slide">${icon("up")}</button>
+        <span class="slide-count" aria-live="polite"></span>
+        <span class="slide-bar" aria-hidden="true"><i></i></span>
+        <button class="hud-btn" type="button" data-dir="1" aria-label="Next slide">${icon("down")}</button>
+      </nav>`
+    );
+    const count = $(".slide-count");
+    const bar = $(".slide-bar i");
+    let current = 0;
+
+    const update = () => {
+      let idx = 0;
+      slides.forEach((s, i) => {
+        if (s.getBoundingClientRect().top <= window.innerHeight * 0.45) idx = i;
+      });
+      current = idx;
+      const n = +slides[idx].dataset.slide;
+      count.innerHTML = `<b>${pad(n)}</b> / ${C.slideTotal}`;
+      bar.style.transform = `scaleX(${n / C.slideTotal})`;
+    };
+
+    const go = (dir) => {
+      const target = current + dir;
+      if (target < 0) {
+        if (links.prev) location.href = links.prev.href;
+        return;
+      }
+      if (target >= slides.length) {
+        if (links.next) location.href = links.next.href;
+        else $(".footer").scrollIntoView({ behavior: reduce() ? "auto" : "smooth" });
+        return;
+      }
+      slides[target].scrollIntoView({ behavior: reduce() ? "auto" : "smooth" });
+    };
+
+    let queued = false;
+    window.addEventListener("scroll", () => {
+      if (!queued) {
+        queued = true;
+        requestAnimationFrame(() => {
+          queued = false;
+          update();
+        });
+      }
+    }, { passive: true });
+    window.addEventListener("resize", update);
+
+    $$(".hud-btn").forEach((b) => b.addEventListener("click", () => go(+b.dataset.dir)));
+
+    document.addEventListener("keydown", (e) => {
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+      const t = e.target instanceof Element ? e.target : document.body;
+      if (t.closest("input, textarea, select, [contenteditable]")) return;
+      const onControl = t.closest("button, a, video, summary");
+      let dir = 0;
+      if (e.key === "ArrowDown" || e.key === "PageDown") dir = 1;
+      else if (e.key === "ArrowUp" || e.key === "PageUp") dir = -1;
+      else if (e.key === " " && !onControl) dir = e.shiftKey ? -1 : 1;
+      else if (e.key === "Home") dir = -current;
+      else if (e.key === "End") dir = slides.length - 1 - current;
+      if (!dir && e.key !== "Home" && e.key !== "End") return;
+      e.preventDefault();
+      if (dir) go(dir);
+    });
+
+    update();
+  }
+
+  PAGES.existing = (main) => renderDeck(main, C.slides.filter((s) => s.n <= 3), { next: C.existingNext });
+
   // @pages
 
   // ---------------------------------------------------------------- boot

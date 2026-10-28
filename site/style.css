@@ -2275,3 +2275,17 @@ main {
 .part-card .kicker {
   align-self: flex-start;
 }
+
+.slide-text .kicker,
+.page-hero .kicker,
+.hero .kicker {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+}
+
+@media (max-width: 480px) {
+  .answer-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
