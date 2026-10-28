@@ -1,0 +1,87 @@
+{
+  "agent": "ReAct",
+  "provider": "gemini",
+  "model": "gemini-3.5-flash-lite",
+  "recorded_at": "2026-10-28T03:54:58+00:00",
+  "instruction": "How high above sea level is Lisbon, in feet?",
+  "candidate_tools": [
+    "calculator",
+    "weather",
+    "search",
+    "currency_exchange",
+    "wikipedia_summary",
+    "joke",
+    "random_quote",
+    "dictionary",
+    "country_info",
+    "geocode",
+    "weather_forecast",
+    "air_quality",
+    "elevation",
+    "zip_code_lookup",
+    "ip_geolocation",
+    "recent_earthquakes",
+    "world_time",
+    "sunrise_sunset",
+    "public_holidays",
+    "long_weekends",
+    "historical_exchange_rate",
+    "crypto_price",
+    "book_search",
+    "book_by_isbn",
+    "author_search",
+    "recipe_search",
+    "random_recipe",
+    "cocktail_search",
+    "trivia_questions",
+    "nasa_apod",
+    "near_earth_asteroids",
+    "iss_location",
+    "spaceflight_news",
+    "cat_fact",
+    "dog_fact",
+    "dog_image",
+    "random_user",
+    "age_from_name",
+    "nationality_from_name",
+    "university_search",
+    "github_user",
+    "pokemon_info",
+    "advice",
+    "color_info",
+    "related_words",
+    "hacker_news_search",
+    "unit_conversion"
+  ],
+  "stop_reason": "answered",
+  "events": [
+    {
+      "kind": "call",
+      "text": "Action: geocode(place='Lisbon')"
+    },
+    {
+      "kind": "observation",
+      "text": "{'name': 'Lisbon', 'country': 'Portugal', 'admin_region': 'Lisbon District', 'latitude': 38.72509, 'longitude': -9.1498, 'timezone': 'Europe/Lisbon', 'population': 517802}"
+    },
+    {
+      "kind": "call",
+      "text": "Action: elevation(longitude=-9.1498, latitude=38.72509)"
+    },
+    {
+      "kind": "observation",
+      "text": "{'latitude': 38.72509, 'longitude': -9.1498, 'elevation_m': 54.0}"
+    },
+    {
+      "kind": "call",
+      "text": "Action: unit_conversion(to_unit='ft', from_unit='m', value=54)"
+    },
+    {
+      "kind": "observation",
+      "text": "{'value': 54.0, 'from_unit': 'm', 'to_unit': 'ft', 'result': 177.165354}"
+    },
+    {
+      "kind": "answer",
+      "text": "Lisbon is approximately 177 feet (54 meters) above sea level."
+    }
+  ]
+}

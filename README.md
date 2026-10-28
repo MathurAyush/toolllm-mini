@@ -157,6 +157,36 @@ gets one of two checks:
 tool groups and the stratified 70/30 `test`/`dev` split are drawn from
 `--seed`.
 
+## Website
+
+`site/` is a static, multi-page site that presents the project: plain
+HTML, CSS and JavaScript with no build step. `site/data/content.js`
+holds all of its text. `site/data/results.json` holds every number it
+shows. That file, with a `results.js` copy so the pages also work
+straight from disk, is written by:
+
+```bash
+python scripts/export_site_data.py
+```
+
+The exporter reads:
+
+- `results/benchmark_results.csv`, the provisional Phase 1 run. Pass
+  rates get Wilson 95% intervals.
+- `results/verified_results.csv`, a post-fix run, once it exists.
+- `results/traces/*.json`, agent traces saved by
+  `scripts/record_trace.py`.
+- `data/benchmark.jsonl`, the generated benchmark.
+- The tool registry.
+
+It also scores the keyword, TF-IDF and MiniLM retrievers on the
+benchmark, without making any model calls. Values that are missing show
+as a TBD badge on the site.
+
+To view the site, open `site/index.html` in a browser, or serve the
+folder with `python -m http.server -d site` and visit
+http://localhost:8000.
+
 ## Design notes
 
 The retrieval, reasoning, and evaluation components are intentionally
