@@ -1947,7 +1947,7 @@
         answerBody.replaceChildren(h("p", null, "You cancelled this run."));
         return;
       }
-      answerCard.replaceWith(errorCard(err, opts.onRecorded));
+      answerCard.replaceWith(errorCard(err));
     }
 
     const handlers = { retrieved: onRetrieved, step: onStep, node: onNode, backtrack: onBacktrack, answer: onAnswer, done: onDone, error: showError };
@@ -1972,12 +1972,10 @@
     };
   }
 
-  function errorCard(err, onRecorded) {
-    const offline = ["offline", "interrupted", "not_configured", "demo_limit"].includes(err.code);
+  function errorCard(err) {
     return h("div", { class: "error-card", role: "alert" },
       h("div", { class: "error-title" }, iconNode("x"), ERROR_TITLES[err.code] || "Something went wrong"),
-      h("p", null, err.message || "Please try again."),
-      offline && onRecorded ? h("button", { class: "btn btn-sm", type: "button", onclick: onRecorded }, iconNode("play"), "Watch the recorded demo") : null
+      h("p", null, err.message || "Please try again.")
     );
   }
 
@@ -2013,7 +2011,7 @@
     return { code: `http_${res.status}`, message: `The server answered with HTTP ${res.status}. Please try again.` };
   }
 
-  const OFFLINE = { code: "offline", message: "The demo server could not be reached. Check that it is running, or watch the recorded demo." };
+  const OFFLINE = { code: "offline", message: "The demo server could not be reached. Double-click start_demo.bat and keep its window open." };
 
   // Streams one live run into `panel`; falls back to POST /api/run when the
   // browser cannot read a streamed response.
@@ -2062,7 +2060,8 @@
   PAGES.demo = (main) => {
     const T = C.demoPage;
     const D = window.SITE_DEMO_RUNS || { questions: [], runs: [] };
-    const st = { base: "", mode: "checking", health: null, strategy: "react", running: null, history: [] };
+    // Live by default. Recorded replay is only ever turned on by the user.
+    const st = { base: "", mode: "live", recorded: false, online: null, health: null, checking: false, strategy: "react", running: null, history: [] };
 
     const defaultBase = () => (/^https?:$/.test(location.protocol) ? location.origin : "http://localhost:8000");
     const savedBase = () => {
@@ -2075,6 +2074,10 @@
     st.base = savedBase() || defaultBase();
 
     main.innerHTML = `
+      <div class="wrap demo-top">
+        <div class="demo-statusbar"></div>
+        <div class="demo-banners" aria-live="assertive"></div>
+      </div>
       <section class="page-hero demo-hero">
         <div class="wrap">
           <span class="kicker" data-reveal>${esc(T.kicker)}</span>
@@ -2092,6 +2095,8 @@
         </div>
       </section>`;
 
+    const statusBar = $(".demo-statusbar", main);
+    const banners = $(".demo-banners", main);
     const consoleEl = $(".demo-console", main);
     const notice = $(".demo-notice", main);
     const results = $(".demo-results", main);
@@ -2100,7 +2105,10 @@
 
     // -- console
     const statusPill = h("span", { class: "status-pill checking", role: "status" }, h("i"), h("span", null, "Checking backend…"));
-    const modeBadge = h("span", { class: "mode-badge checking" }, "…");
+    const modeBadge = h("span", { class: "mode-badge live" }, "Live");
+    const recordedBox = h("input", { type: "checkbox", id: "demo-rec" });
+    const recordedToggle = h("label", { class: "rec-toggle", for: "demo-rec", title: "Replay runs recorded earlier instead of asking the server" },
+      recordedBox, h("span", { class: "rec-switch", "aria-hidden": "true" }), h("span", null, "Use recorded demo"));
     const input = h("textarea", { id: "demo-q", rows: "3", maxlength: String(MAX_CHARS), placeholder: T.placeholder, "aria-describedby": "demo-count" });
     const counter = h("span", { id: "demo-count", class: "char-count" }, `0 / ${MAX_CHARS}`);
     const examples = h("div", { class: "examples", role: "list", "aria-label": "Example questions" },
@@ -2133,8 +2141,8 @@
         baseMsg)
     );
 
+    statusBar.append(statusPill, modeBadge, recordedToggle, settings);
     consoleEl.append(
-      h("div", { class: "console-top" }, statusPill, modeBadge, settings),
       h("label", { class: "sr-only", for: "demo-q" }, "Your question"),
       h("div", { class: "q-wrap" }, input, counter),
       examples,
@@ -2172,12 +2180,24 @@
     });
 
     // -- backend status and mode
-    function setMode(mode) {
-      st.mode = mode;
-      modeBadge.className = `mode-badge ${mode}`;
-      modeBadge.textContent = mode === "live" ? "Live" : mode === "recorded" ? "Recorded demo" : "…";
-      modeBadge.title = mode === "live" ? "Questions are answered live by the running server" : "Replays runs recorded earlier; nothing here is live";
-      const recorded = mode === "recorded";
+    const liveReady = () => !!(st.online && st.health && st.health.live);
+    // Opened as a file, or from a port the demo server does not answer on.
+    const wrongPlace = () => location.protocol === "file:" || (st.online === false && location.port !== "8000");
+
+    function banner(kind, title, text) {
+      return h("div", { class: `demo-banner ${kind}`, role: "alert" },
+        iconNode(kind === "error" ? "x" : "dot"),
+        h("div", null, h("strong", null, title), text ? h("p", null, text) : null));
+    }
+
+    // Applies the mode and the backend's state to the whole console.
+    function render() {
+      const recorded = st.recorded;
+      st.mode = recorded ? "recorded" : "live";
+      recordedBox.checked = recorded;
+      modeBadge.className = `mode-badge ${st.mode}`;
+      modeBadge.textContent = recorded ? "Recorded demo" : "Live";
+      modeBadge.title = recorded ? "Replays runs recorded earlier; nothing here is live" : "Questions are answered live by the running server";
       topK.disabled = recorded;
       topKNote.textContent = recorded ? "Recorded runs used top-k = 5." : "";
       if (recorded) {
@@ -2186,33 +2206,47 @@
       }
       notice.hidden = !recorded;
       notice.replaceChildren();
-      if (recorded) {
-        notice.className = "demo-notice";
-        const why = st.health && !st.health.live ? T.noKeyNote : T.recordedNote;
-        notice.append(h("span", { class: "mode-badge recorded" }, "Recorded demo"), h("p", null, why));
-      }
+      if (recorded) notice.append(h("span", { class: "mode-badge recorded" }, "Recorded demo"), h("p", null, T.recordedNote));
+
+      const shown = [];
+      if (st.online === false) shown.push(banner("error", T.offlineTitle, recorded ? T.offlineRecorded : T.offlineText));
+      else if (st.online && !st.health.live) shown.push(banner("error", T.noKeyTitle, T.noKeyText));
+      if (wrongPlace()) shown.push(banner("warn", T.originTitle, T.originText));
+      banners.replaceChildren(...shown);
+
+      runBtn.disabled = !!st.running || (!recorded && !liveReady());
+      runBtn.title = runBtn.disabled && !st.running ? "The demo server is not available" : "";
     }
 
+    function setRecorded(on) {
+      st.recorded = on;
+      render();
+      if (!on) results.querySelectorAll(".info-card").forEach((c) => c.remove());
+    }
+    recordedBox.addEventListener("change", () => setRecorded(recordedBox.checked));
+
     async function checkHealth() {
-      statusPill.className = "status-pill checking";
-      statusPill.lastChild.textContent = "Checking backend…";
+      if (st.checking) return;
+      st.checking = true;
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 4000);
+      const timer = setTimeout(() => ctrl.abort(), 2500);
       try {
         const res = await fetch(`${st.base}/api/health`, { signal: ctrl.signal, cache: "no-store" });
         const data = res.ok ? await res.json() : null;
         if (!data || data.status !== "ok") throw new Error("unhealthy");
+        st.online = true;
         st.health = data;
         statusPill.className = `status-pill ${data.live ? "online" : "partial"}`;
         statusPill.lastChild.textContent = data.live ? `Backend online · ${data.model}` : "Backend online · no model key";
-        if (!st.running) setMode(data.live ? "live" : "recorded");
       } catch (e) {
+        st.online = false;
         st.health = null;
         statusPill.className = "status-pill offline";
         statusPill.lastChild.textContent = "Backend offline";
-        if (!st.running) setMode("recorded");
       } finally {
         clearTimeout(timer);
+        st.checking = false;
+        render();
       }
     }
 
@@ -2229,7 +2263,7 @@
       st.base = v || defaultBase();
       baseInput.value = st.base;
       baseMsg.textContent = v ? "Saved. Checking the server…" : "Reset to the default. Checking the server…";
-      checkHealth().then(() => (baseMsg.textContent = st.health ? "Connected." : "Not reachable; using the recorded demo."));
+      checkHealth().then(() => (baseMsg.textContent = st.online ? "Connected." : "Not reachable yet; checking again every few seconds."));
     }
 
     // -- running
@@ -2262,10 +2296,15 @@
       }
       const strategy = fromHistory ? fromHistory.strategy : st.strategy;
       const strategies = strategy === "compare" ? ["react", "dfsdt"] : [strategy];
-      const mode = fromHistory ? fromHistory.mode : st.mode === "live" ? "live" : "recorded";
+      const mode = fromHistory ? fromHistory.mode : st.mode;
+      if (mode === "live" && !fromHistory && !liveReady()) {
+        checkHealth();
+        banners.firstElementChild && banners.firstElementChild.scrollIntoView({ behavior: reduce() ? "auto" : "smooth", block: "center" });
+        return;
+      }
       const recorded = mode === "recorded" && !fromHistory ? strategies.map((s) => findRecorded(question, s)) : null;
       if (recorded && recorded.some((r) => !r)) {
-        showNotice("warn", T.recordedOnly, recordedChoices());
+        showNotice("warn", `No recording exists for “${question}”. ${T.recordedOnly}`, recordedChoices());
         return;
       }
 
@@ -2289,11 +2328,6 @@
           recorded: mode === "recorded" ? (rec && rec.recorded_at ? rec.recorded_at.slice(0, 10) : "run") : null,
           topK: params.topK,
           instant: !!fromHistory,
-          onRecorded: () => {
-            setMode("recorded");
-            if (findRecorded(question, s)) run();
-            else showNotice("warn", T.recordedOnly, recordedChoices());
-          },
         });
       });
       ctrl.signal.addEventListener("abort", () => panels.forEach((p) => p.hurry()));
@@ -2312,8 +2346,8 @@
       const states = await Promise.all(panels.map((p) => p.settled()));
 
       st.running = null;
-      runBtn.disabled = false;
       cancelBtn.hidden = true;
+      render();
       const runs = states.map((s) => s.run);
       if (runs.length === 2 && runs[0] && runs[1]) showSummary(runs[0], runs[1]);
       if (!fromHistory) {
@@ -2382,11 +2416,13 @@
       );
     }
 
-    setMode("checking");
+    render();
     checkHealth();
+    // Every 3 seconds, so the page goes live as soon as the server is up.
     setInterval(() => {
-      if (!st.running && !document.hidden) checkHealth();
-    }, 30000);
+      if (!document.hidden) checkHealth();
+    }, 3000);
+    document.addEventListener("visibilitychange", () => !document.hidden && checkHealth());
   };
 
   // @pages

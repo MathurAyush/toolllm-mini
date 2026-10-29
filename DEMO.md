@@ -1,16 +1,39 @@
 # Live demo
 
+**Double-click start_demo.bat, keep the black window open, and use the page that opens.**
+
+To stop the server, close that window or double-click `stop_demo.bat`.
+
 The website's demo page (`site/demo.html`) lets you type a question and watch
-the agent retrieve APIs, call them and answer, step by step. It runs in one of
-two modes, and a badge on the page always shows which one is active:
+the agent retrieve APIs, call them and answer, step by step. A badge on the
+page always shows which mode is active:
 
-- **Live**: the page talks to the demo server, which runs the real retriever,
-  agents and tools for every question.
-- **Recorded demo**: when no server is reachable, the page replays runs that
-  were recorded earlier with the same code (`results/demo_runs/`). Only the
-  example questions can be replayed, and nothing in this mode is live.
+- **Live** (always the default): the page talks to the demo server, which runs
+  the real retriever, agents and tools for every question. If the server is
+  not running, a red "Backend offline" banner appears and the Run button is
+  disabled; the page checks again every 3 seconds and goes live by itself as
+  soon as the server is up.
+- **Recorded demo** (only when you turn on "Use recorded demo"): the page
+  replays runs that were recorded earlier with the same code
+  (`results/demo_runs/`). Only the example questions have recordings, and
+  nothing in this mode is live. The page never switches to it on its own.
 
-## Run it locally
+## What start_demo.bat does
+
+1. Creates the `venv` Python environment if it is missing and installs
+   `requirements.txt` only when a package is missing.
+2. Checks that `.env` exists and holds a Gemini key (the key is never shown).
+3. If port 8000 is taken by an old demo server, stops it; if another program
+   uses it, picks the next free port and says which one.
+4. Starts the server, waits until `/api/health` answers, and opens
+   `http://localhost:<port>/demo.html` in your default browser.
+5. Keeps the window open with the server log.
+
+Always use the page at `http://localhost:8000/demo.html`. Opening
+`site/demo.html` as a file, or from another web server, cannot reach the API;
+the page shows a banner saying so.
+
+## Run it by hand
 
 ```bash
 pip install -r requirements.txt
@@ -32,12 +55,13 @@ GEMINI_API_KEY=your-key-here
 The key stays on the server. It is never sent to the browser, and error
 messages shown on the page never include it, stack traces or file paths.
 If the key is missing the page still loads, shows "Backend online · no model
-key", and falls back to the recorded demo.
+key" and a red banner explaining how to add it.
 
 ## GitHub Pages and hosting
 
-GitHub Pages only serves static files, so the published site can only show the
-**recorded** mode. For live answers the server has to run somewhere:
+GitHub Pages only serves static files, so on the published site live mode shows
+the "Backend offline" banner, and visitors can only turn on the **recorded**
+demo by hand. For live answers the server has to run somewhere:
 
 - locally, with the command above, or
 - on a host such as Render or Railway, with the start command
@@ -61,8 +85,7 @@ so the per-visitor rate limit sees real client addresses.
 | Runs per day, all visitors | 300 | `DEMO_DAILY_CAP` |
 | Runs at the same time | 4 | `DEMO_MAX_CONCURRENT` |
 
-When the daily cap is reached the page shows a "Demo limit reached" message
-and offers the recorded demo.
+When the daily cap is reached the page shows a "Demo limit reached" message.
 
 ## Refreshing the recorded runs
 

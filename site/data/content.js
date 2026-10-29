@@ -276,9 +276,15 @@ window.SITE_CONTENT = {
     title: "Ask the [[agent]]",
     intro: "Type a question and watch the agent pick APIs, call them for real and reason its way to an answer.",
     placeholder: "Ask something that needs live data, e.g. How high is Lisbon above sea level, in feet?",
-    recordedNote: "No demo server is reachable from this page, so it replays runs recorded earlier with the same code. These answers are not live.",
-    recordedOnly: "The recorded demo can only replay the saved example questions. To ask your own question, start the server (see DEMO.md) and enter its address under Settings.",
-    noKeyNote: "The server is online but has no model key, so the page replays recorded runs instead.",
+    recordedNote: "You turned on the recorded demo: the page replays runs recorded earlier with the same code. These answers are not live. Turn the switch off to ask the server.",
+    recordedOnly: "The recorded demo only has the example questions below. Turn off “Use recorded demo” to ask your own question live.",
+    offlineTitle: "Backend offline: double-click start_demo.bat",
+    offlineText: "Keep its black window open. This page checks every 3 seconds and goes live by itself, no reload needed. You can keep typing your question meanwhile.",
+    offlineRecorded: "The recorded demo still works. Double-click start_demo.bat to ask questions live.",
+    noKeyTitle: "Backend online, but it has no Gemini key",
+    noKeyText: "Put your key after GEMINI_API_KEY= in the .env file, then close the server window and double-click start_demo.bat again.",
+    originTitle: "Open the demo at http://localhost:8000/demo.html",
+    originText: "This copy of the page is not served by the demo server, so it cannot ask live questions. Start start_demo.bat; it opens the right address for you.",
   },
 
   teamPage: {
