@@ -1,0 +1,27 @@
+# Render blueprint for the live demo server (see DEMO.md).
+# Render dashboard -> New -> Blueprint -> pick this repository, then paste
+# the Gemini key when asked for GEMINI_API_KEY.
+services:
+  - type: web
+    name: toolagent-demo
+    runtime: python
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements-server.txt
+    startCommand: python -m uvicorn server.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      # Entered in the dashboard; never committed.
+      - key: GEMINI_API_KEY
+        sync: false
+      # Render's proxy sets X-Forwarded-For, so the per-visitor limit sees
+      # real client addresses.
+      - key: DEMO_TRUST_PROXY
+        value: "1"
+      - key: DEMO_RATE_PER_MINUTE
+        value: "6"
+      - key: DEMO_DAILY_CAP
+        value: "300"

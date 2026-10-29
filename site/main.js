@@ -2185,14 +2185,19 @@
     // Opened as a file: browsers block it from talking to any server.
     const wrongPlace = () => location.protocol === "file:";
     // Servers to try, in order. Without a saved address: the page's own
-    // server, then the one start_demo.bat runs on this computer, so the
-    // published site goes live too while that server is running.
+    // server; on the published site, then the hosted demo server; and last
+    // the one start_demo.bat runs on this computer. The hosted server comes
+    // before localhost so visitors are not asked for local network access.
+    const PUBLIC_SERVER = (T.serverUrl || "").replace(/\/+$/, "");
+    const onLocalhost = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
     const notApi = new Set(); // origins that answered 404: static hosting only
     const candidates = () => {
       const saved = savedBase();
       if (saved) return [saved];
       const own = defaultBase();
-      return (own === LOCAL_SERVER ? [own] : [own, LOCAL_SERVER]).filter((b) => !notApi.has(b));
+      const list = onLocalhost || location.protocol === "file:" ? [own, LOCAL_SERVER]
+        : own === PUBLIC_SERVER ? [own] : [own, PUBLIC_SERVER, LOCAL_SERVER];
+      return [...new Set(list)].filter((b) => b && !notApi.has(b));
     };
     // Chrome asks before a public site may reach this computer; once the
     // visitor blocks it, every request fails until they allow it again.
@@ -2231,7 +2236,9 @@
       if (recorded) notice.append(h("span", { class: "mode-badge recorded" }, "Recorded demo"), h("p", null, T.recordedNote));
 
       const shown = [];
-      if (st.online === false && st.blocked) shown.push(banner("error", T.blockedTitle, T.blockedText));
+      const hostedSite = PUBLIC_SERVER && !savedBase() && !onLocalhost && location.protocol !== "file:";
+      if (st.online === false && hostedSite) shown.push(banner("error", T.hostedOfflineTitle, T.hostedOfflineText));
+      else if (st.online === false && st.blocked) shown.push(banner("error", T.blockedTitle, T.blockedText));
       else if (st.online === false) shown.push(banner("error", T.offlineTitle, recorded ? T.offlineRecorded : T.offlineText));
       else if (st.online && !st.health.live) shown.push(banner("error", T.noKeyTitle, T.noKeyText));
       if (wrongPlace()) shown.push(banner("warn", T.originTitle, T.originText));
@@ -2254,7 +2261,14 @@
       let found = null;
       for (const base of candidates()) {
         const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 2500);
+        // A free hosted server sleeps when idle and needs up to a minute to
+        // wake, so it gets a long wait and a "waking up" message.
+        const hosted = base === PUBLIC_SERVER && !st.online;
+        const timer = setTimeout(() => ctrl.abort(), hosted ? 75000 : 2500);
+        const wake = hosted && setTimeout(() => {
+          statusPill.className = "status-pill checking";
+          statusPill.lastChild.textContent = "Waking up the live server… (up to a minute)";
+        }, 2500);
         try {
           const res = await fetch(`${base}/api/health`, { signal: ctrl.signal, cache: "no-store" });
           if (res.status === 404 && base !== LOCAL_SERVER && !savedBase()) notApi.add(base);
@@ -2266,6 +2280,7 @@
         } catch (e) { /* not reachable: try the next one */ }
         finally {
           clearTimeout(timer);
+          clearTimeout(wake);
         }
       }
       if (found) {

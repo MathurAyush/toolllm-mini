@@ -69,19 +69,35 @@ Local network access to Allow.) Without a local server, the page shows the
 "Backend offline" banner, and visitors can turn on the **recorded** demo by
 hand.
 
-For live answers for every visitor, the server has to run somewhere public:
+## Live mode for every visitor (Render)
 
-- locally, with the command above, or
-- on a host such as Render or Railway, with the start command
-  `python -m uvicorn server.app:app --host 0.0.0.0 --port $PORT` and
-  `GEMINI_API_KEY` stored as an environment variable in the host's settings
-  (never committed to the repository).
+`render.yaml` describes a free Render web service named `toolagent-demo`. It
+installs only `requirements-server.txt` (about 140 MB of memory in use, under
+the free plan's 512 MB) and starts the same server. One-time setup:
 
-To point the published page at a deployed server, open **Settings** on the demo
-page and enter the server's address; it is saved in your browser. The server
-only accepts requests from localhost and the site's own origin. Add other
-origins with `DEMO_ALLOWED_ORIGINS`, and set `DEMO_TRUST_PROXY=1` behind a proxy
-so the per-visitor rate limit sees real client addresses.
+1. Sign in at <https://dashboard.render.com> with GitHub.
+2. **New → Blueprint**, pick this repository, and click **Apply**.
+3. When asked for `GEMINI_API_KEY`, paste the key. It is stored only on
+   Render, never in the repository.
+4. Wait for the first deploy to finish, then open
+   `https://toolagent-demo.onrender.com/api/health`. It should show
+   `"status": "ok"` and `"live": true`.
+
+The published demo page tries `https://toolagent-demo.onrender.com` (set as
+`serverUrl` in `site/data/content.js`) before a local server, so visitors get
+live answers with no setup. If Render gave the service a different address,
+put that address in `serverUrl` and push.
+
+On the free plan the service sleeps after 15 minutes without visitors. The
+first visit after that waits up to a minute while it wakes; the page shows
+"Waking up the live server…" meanwhile. Every visitor's questions use your
+Gemini key, so the per-visitor and daily limits below matter; set them under
+the service's **Environment** tab.
+
+The server only accepts browser requests from localhost, its own address and
+`https://mathurayush.github.io`. Add other origins with `DEMO_ALLOWED_ORIGINS`.
+Anyone can still point the page at another server under **Settings**; that
+address is saved in their browser only.
 
 ## Limits
 

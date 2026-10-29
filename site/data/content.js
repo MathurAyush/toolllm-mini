@@ -272,6 +272,9 @@ window.SITE_CONTENT = {
   },
 
   demoPage: {
+    // The hosted demo server (render.yaml). The published site uses it for
+    // live answers; empty to use only a local server.
+    serverUrl: "https://toolagent-demo.onrender.com",
     kicker: "Demo",
     title: "Ask the [[agent]]",
     intro: "Type a question and watch the agent pick APIs, call them for real and reason its way to an answer.",
@@ -280,6 +283,8 @@ window.SITE_CONTENT = {
     recordedOnly: "The recorded demo only has the example questions below. Turn off “Use recorded demo” to ask your own question live.",
     offlineTitle: "Backend offline: double-click start_demo.bat",
     offlineText: "Live answers come from the demo server on your computer. Start it and keep its black window open: this page looks for it at http://localhost:8000 every 3 seconds and goes live by itself, no reload needed. If the browser asks to allow access to devices on your local network, click Allow.",
+    hostedOfflineTitle: "The live demo server is not answering",
+    hostedOfflineText: "It may be restarting. This page keeps checking every few seconds and goes live by itself. Meanwhile you can turn on “Use recorded demo”, or run the project yourself with start_demo.bat.",
     blockedTitle: "Your browser is blocking the connection to the demo server",
     blockedText: "This page was refused access to your local network. Click the icon at the left of the address bar, open Site settings, set Local network access to Allow, then reload the page.",
     offlineRecorded: "The recorded demo still works. Double-click start_demo.bat to ask questions live.",
