@@ -80,6 +80,10 @@
     drop: '<path d="M12 3.5s-6 6.5-6 10.5a6 6 0 0 0 12 0c0-4-6-10.5-6-10.5z"/>',
     ruler: '<path d="M3.5 15.5 15.5 3.5l5 5-12 12z"/><path d="M7 12l2 2M10 9l2 2M13 6l2 2"/>',
     dot: '<circle cx="12" cy="12" r="3"/>',
+    branch: '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10M18 10c0 4-6 3-11.2 7.4"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>',
+    stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
+    history: '<path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4.5h4.5"/><path d="M12 8v4l3 2"/>',
   };
 
   const CATEGORY_ICONS = {
@@ -142,7 +146,7 @@
       <header class="nav">
         <a class="brand" href="index.html" aria-label="${esc(C.brand)} home">${brandMark()}<span>${esc(C.brand)}</span></a>
         <ul class="nav-links" id="nav-links">${links}</ul>
-        <a class="btn btn-primary btn-sm nav-demo magnetic" href="${C.demo.href}">${icon("play")}${esc(C.demo.label)}</a>
+        <a class="btn btn-primary btn-sm nav-demo magnetic" href="${C.demo.href}"${page === "demo" ? ' aria-current="page"' : ""}>${icon("play")}${esc(C.demo.label)}</a>
         <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav-links" aria-label="Open menu"><span></span></button>
       </header>`
     );
@@ -1538,6 +1542,851 @@
           </div>
         </div>
       </section>`;
+  };
+
+  // ---------------------------------------------------------------- demo
+
+  // Builds DOM nodes. String children become text nodes, so text from the
+  // server is never parsed as HTML.
+  function h(tag, attrs, ...children) {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (v == null || v === false) continue;
+      if (k === "class") el.className = v;
+      else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+      else el.setAttribute(k, v === true ? "" : v);
+    }
+    for (const c of children.flat()) {
+      if (c != null && c !== false) el.append(c instanceof Node ? c : String(c));
+    }
+    return el;
+  }
+
+  // An icon from the constant ICONS table (never server text).
+  function iconNode(name) {
+    const t = document.createElement("template");
+    t.innerHTML = icon(name);
+    return t.content.firstElementChild;
+  }
+
+  const svgEl = (tag, attrs) => {
+    const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, v);
+    return el;
+  };
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const STRATEGY_LABEL = { react: "ReAct", dfsdt: "DFSDT" };
+  const API_BASE_KEY = "toolagent.apiBase";
+  const MAX_CHARS = 300;
+
+  // The answer text uses a little Markdown (bold, bullet lists). It is
+  // rendered as DOM nodes with textContent, never as HTML.
+  function richText(text) {
+    const frag = document.createDocumentFragment();
+    let list = null;
+    const inline = (line) => line.split(/(\*\*[^*]+\*\*)/).filter(Boolean).map((part) =>
+      /^\*\*[^*]+\*\*$/.test(part) ? h("strong", null, part.slice(2, -2)) : part
+    );
+    text.split(/\n+/).forEach((raw) => {
+      const line = raw.trim();
+      if (!line) return;
+      const bullet = line.match(/^[-*•]\s+(.*)$/);
+      if (bullet) {
+        if (!list) frag.append((list = h("ul")));
+        list.append(h("li", null, inline(bullet[1])));
+      } else {
+        list = null;
+        frag.append(h("p", null, inline(line)));
+      }
+    });
+    return frag;
+  }
+
+  // Types `text` into `el`; instant under reduced motion or once the run
+  // is told to hurry (cancelled, or replayed from history).
+  function typeText(el, text, ctx) {
+    if (!text || reduce() || ctx.instant) {
+      el.textContent = text;
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      const node = document.createTextNode("");
+      const caret = h("span", { class: "caret" });
+      el.replaceChildren(node, caret);
+      const stepSize = Math.max(2, Math.ceil(text.length / 40));
+      let i = 0;
+      const tick = () => {
+        i = ctx.instant ? text.length : Math.min(text.length, i + stepSize);
+        node.data = text.slice(0, i);
+        if (i < text.length) setTimeout(tick, 16);
+        else {
+          caret.remove();
+          resolve();
+        }
+      };
+      tick();
+    });
+  }
+
+  const argText = (args) =>
+    Object.entries(args || {}).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", ");
+  const jsonText = (v) => (typeof v === "string" ? v : JSON.stringify(v, null, 2));
+  const fmtLatency = (ms) => (ms == null ? "–" : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`);
+
+  // A whole run as the event sequence the stream would have sent, for
+  // replaying a recorded run or a run fetched without streaming.
+  function runToEvents(run) {
+    const events = [["retrieved", { strategy: run.strategy, model: run.model, top_k: run.top_k, retrieved_tools: run.retrieved_tools }]];
+    if (run.tree) {
+      const nodes = run.tree.nodes.filter((n) => n.id !== 0).sort((a, b) => a.id - b.id);
+      const parentOf = new Map(run.tree.nodes.map((n) => [n.id, n.parent]));
+      const isUnder = (id, root) => {
+        for (let p = id; p != null; p = parentOf.get(p)) if (p === root) return true;
+        return false;
+      };
+      const pendingDeadEnds = [];
+      const flushDeadEnds = (beforeId) => {
+        while (pendingDeadEnds.length && (beforeId == null || !isUnder(beforeId, pendingDeadEnds[pendingDeadEnds.length - 1]))) {
+          const id = pendingDeadEnds.pop();
+          events.push(["backtrack", { node: id, reason: "dead_end", steps: run.steps.filter((s) => s.node === id).map((s) => s.index) }]);
+        }
+      };
+      nodes.forEach((n) => {
+        flushDeadEnds(n.id);
+        events.push(["node", { id: n.id, parent: n.parent, depth: n.depth, tools: n.tools, status: "open" }]);
+        run.steps.filter((s) => s.node === n.id).forEach((s) => events.push(["step", { ...s, backtracked: false }]));
+        if (n.status === "error") {
+          const reason = n.tools.length ? "tool_error" : "empty_reply";
+          events.push(["backtrack", { node: n.id, reason, steps: run.steps.filter((s) => s.node === n.id).map((s) => s.index) }]);
+        } else if (n.status === "dead_end") pendingDeadEnds.push(n.id);
+        else if (n.status === "answer") events.push(["answer", { text: run.final_answer }]);
+      });
+      flushDeadEnds(null);
+    } else {
+      run.steps.forEach((s) => events.push(["step", s]));
+      if (run.final_answer) events.push(["answer", { text: run.final_answer }]);
+    }
+    events.push(["done", run]);
+    return events;
+  }
+
+  const BACKTRACK_TEXT = {
+    tool_error: "A tool call failed, so this branch is dropped and another reply is tried.",
+    empty_reply: "The model returned an empty reply, so another reply is tried.",
+    dead_end: "Nothing below this branch reached an answer, so the search backtracks.",
+  };
+
+  const ERROR_TITLES = {
+    rate_limited: "Slow down a little",
+    demo_limit: "Demo limit reached",
+    model_rate_limited: "The model is busy",
+    timeout: "That took too long",
+    not_configured: "Live mode is not set up",
+    busy: "The server is busy",
+    offline: "Cannot reach the server",
+    interrupted: "The connection dropped",
+    question_too_long: "Question too long",
+    empty_question: "No question yet",
+  };
+
+  // ---------------------------------------------------------------- tree
+
+  // Lays the DFSDT search tree out top-down: leaves get one column each in
+  // the order explored, parents sit above the middle of their children.
+  function drawTree(host, nodes, seen, chosen) {
+    const kids = new Map();
+    nodes.forEach((n) => {
+      if (n.parent == null) return;
+      if (!kids.has(n.parent)) kids.set(n.parent, []);
+      kids.get(n.parent).push(n.id);
+    });
+    const col = new Map();
+    let slot = 0, maxDepth = 0;
+    const place = (id) => {
+      const ch = (kids.get(id) || []).sort((a, b) => a - b);
+      if (!ch.length) col.set(id, slot++);
+      else {
+        ch.forEach(place);
+        col.set(id, (col.get(ch[0]) + col.get(ch[ch.length - 1])) / 2);
+      }
+    };
+    place(0);
+    nodes.forEach((n) => (maxDepth = Math.max(maxDepth, n.depth)));
+
+    const NW = 124, NH = 44, GX = 140, GY = 84, P = 10;
+    const W = Math.max(1, slot) * GX - (GX - NW) + P * 2;
+    const H = maxDepth * GY + NH + P * 2;
+    const cx = (id) => P + col.get(id) * GX + NW / 2;
+    const cy = (d) => P + d * GY + NH / 2;
+    const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "DFSDT search tree" });
+    svg.style.maxWidth = `${W}px`;
+
+    nodes.forEach((n) => {
+      if (n.parent == null || !col.has(n.id)) return;
+      const parent = nodes.get(n.parent);
+      const x1 = cx(n.parent), y1 = cy(parent.depth) + NH / 2, x2 = cx(n.id), y2 = cy(n.depth) - NH / 2;
+      const my = (y1 + y2) / 2;
+      const path = svgEl("path", { d: `M${x1} ${y1} C${x1} ${my} ${x2} ${my} ${x2} ${y2}`, pathLength: "1" });
+      path.setAttribute("class", `t-edge s-${n.status}${chosen.has(n.id) ? " chosen" : ""}${seen.has("e" + n.id) ? "" : " enter"}`);
+      seen.add("e" + n.id);
+      svg.append(path);
+    });
+
+    nodes.forEach((n) => {
+      if (!col.has(n.id)) return;
+      const g = svgEl("g", { transform: `translate(${cx(n.id) - NW / 2} ${cy(n.depth) - NH / 2})` });
+      g.setAttribute("class", `t-node s-${n.status}${chosen.has(n.id) ? " chosen" : ""}${seen.has(n.id) ? "" : " enter"}`);
+      seen.add(n.id);
+      const label = n.id === 0 ? "Question" : n.status === "answer" ? "Answer" : n.tools.length ? clip(n.tools.join(", "), 17) : "Empty reply";
+      const sub = { root: "start", open: "running", ok: "ok", error: "failed", dead_end: "dead end", answer: "final answer" }[n.status] || n.status;
+      const title = svgEl("title");
+      title.textContent = n.id === 0 ? "The question" : `Branch ${n.id}: ${n.tools.join(", ") || "text reply"} (${sub})`;
+      const rect = svgEl("rect", { width: NW, height: NH, rx: 11 });
+      const t1 = svgEl("text", { x: NW / 2, y: 19, class: "t-label" });
+      t1.textContent = label;
+      const t2 = svgEl("text", { x: NW / 2, y: 34, class: "t-sub" });
+      t2.textContent = n.id === 0 ? sub : `#${n.id} · ${sub}`;
+      g.append(title, rect, t1, t2);
+      svg.append(g);
+    });
+    host.replaceChildren(svg);
+  }
+
+  // ---------------------------------------------------------------- panel
+
+  // One run's results: retrieved APIs, timeline, tree, answer, metrics.
+  // Events are applied in order through a queue, so typing animations never
+  // overlap however fast the stream sends them.
+  function createPanel(parent, strategy, opts) {
+    const ctx = { instant: !!opts.instant };
+    let chain = Promise.resolve();
+    const enqueue = (fn) => (chain = chain.then(fn).catch((err) => console.error(err)));
+    const state = { cards: new Map(), steps: new Map(), nodes: new Map([[0, { id: 0, parent: null, depth: 0, tools: [], status: "root" }]]), seen: new Set(), run: null, error: null, ended: false };
+
+    const stateText = h("span", { class: "run-state" }, opts.recorded ? "Replaying" : "Retrieving APIs");
+    const head = h("div", { class: "run-head" },
+      h("span", { class: `strategy-badge s-${strategy}` }, STRATEGY_LABEL[strategy]),
+      stateText,
+      opts.recorded ? h("span", { class: "mode-tag recorded", title: "Replayed from a saved run, not live" }, `Recorded ${opts.recorded}`) : null
+    );
+    const skel = (n, cls) => Array.from({ length: n }, () => h("div", { class: `skel ${cls}` }));
+    const apiGrid = h("div", { class: "api-grid" }, skel(Math.min(opts.topK || 4, 6), "skel-card"));
+    const timeline = h("ol", { class: "timeline" });
+    const timelineSkel = h("div", { class: "skel-group" }, skel(2, "skel-row"));
+    const treeHost = h("div", { class: "tree-host" });
+    const treeSec = strategy === "dfsdt"
+      ? h("section", { class: "run-sec" },
+          h("h3", { class: "run-sec-title" }, iconNode("tree"), "Search tree"),
+          treeHost,
+          h("div", { class: "tree-legend" },
+            h("span", { class: "lg chosen" }, "chosen path"),
+            h("span", { class: "lg error" }, "failed call"),
+            h("span", { class: "lg dead" }, "dead end")))
+      : null;
+    const answerBody = h("div", { class: "answer-body" }, skel(2, "skel-line"));
+    const answerCard = h("div", { class: "answer-card pending" }, h("div", { class: "answer-label" }, iconNode("check"), "Final answer"), answerBody);
+    const metric = (label) => {
+      const v = h("span", { class: "m-v" }, "–");
+      return [h("div", { class: "metric" }, v, h("span", { class: "m-l" }, label)), v];
+    };
+    const [mSteps, vSteps] = metric("steps");
+    const [mCalls, vCalls] = metric("tool calls");
+    const [mLatency, vLatency] = metric("latency");
+    const [mModel, vModel] = metric("model");
+    const metrics = h("div", { class: "metrics" }, mSteps, mCalls, mLatency, mModel);
+
+    const el = h("article", { class: `run-panel s-${strategy}` },
+      head,
+      h("section", { class: "run-sec" }, h("h3", { class: "run-sec-title" }, iconNode("search"), "Retrieved APIs"), apiGrid),
+      h("section", { class: "run-sec" }, h("h3", { class: "run-sec-title" }, iconNode("call"), "Reasoning"), timeline, timelineSkel),
+      treeSec,
+      answerCard,
+      metrics
+    );
+    parent.append(el);
+    if (treeSec) drawTree(treeHost, state.nodes, state.seen, new Set());
+
+    function markCard(name, status) {
+      const card = state.cards.get(name);
+      if (!card) return;
+      if (status === "ok") {
+        card.classList.add("used");
+        card.classList.remove("failed");
+      } else if (!card.classList.contains("used")) card.classList.add("failed");
+    }
+
+    function onRetrieved(data) {
+      stateText.textContent = opts.recorded ? "Replaying the recorded run" : `Reasoning with ${STRATEGY_LABEL[strategy]}`;
+      vModel.textContent = data.model || "–";
+      const max = Math.max(...data.retrieved_tools.map((t) => t.score), 0.0001);
+      apiGrid.replaceChildren();
+      data.retrieved_tools.forEach((t, i) => {
+        const bar = h("i");
+        const card = h("div", { class: "api-card", style: `--i:${i}` },
+          h("div", { class: "api-top" },
+            h("span", { class: "api-icon" }, iconNode(CATEGORY_ICONS[t.category])),
+            h("span", { class: "api-name" }, t.name),
+            h("span", { class: "api-badge used-badge" }, "used"),
+            h("span", { class: "api-badge failed-badge" }, "failed")),
+          h("p", { class: "api-desc" }, t.description),
+          h("div", { class: "api-score" },
+            h("span", { class: "score-bar" }, bar),
+            h("span", { class: "score-v" }, t.score.toFixed(2))),
+          h("span", { class: "api-cat" }, t.category)
+        );
+        card.title = `Relevance ${t.score.toFixed(3)}`;
+        apiGrid.append(card);
+        state.cards.set(t.name, card);
+        requestAnimationFrame(() => requestAnimationFrame(() => (bar.style.width = `${Math.max(3, (100 * t.score) / max)}%`)));
+      });
+    }
+
+    async function onStep(s) {
+      timelineSkel.remove();
+      const obsText = jsonText(s.observation);
+      const thought = h("div", { class: `tl-text${s.thought ? "" : " none"}` });
+      const call = h("code", { class: "tl-code" });
+      const item = h("li", { class: `tl-item ${s.status}`, "data-step": s.index },
+        h("span", { class: "tl-dot" }, String(s.index)),
+        h("div", { class: "tl-body" },
+          h("div", { class: "tl-row" }, h("span", { class: "tl-lbl thought" }, "Thought"), thought),
+          h("div", { class: "tl-row" },
+            h("span", { class: "tl-lbl call" }, "Tool call"),
+            call,
+            s.node != null ? h("span", { class: "tl-branch" }, `branch #${s.node}`) : null,
+            s.status === "error" ? h("span", { class: "tl-fail" }, iconNode("x"), "failed") : null),
+          h("details", { class: "tl-obs" },
+            h("summary", null, h("span", { class: `tl-lbl obs` }, "Observation"), h("span", { class: "tl-preview" }, clip(typeof s.observation === "string" ? s.observation : JSON.stringify(s.observation), 110))),
+            h("pre", null, obsText)))
+      );
+      timeline.append(item);
+      state.steps.set(s.index, item);
+      vCalls.textContent = String(state.steps.size);
+      if (s.thought) await typeText(thought, s.thought, ctx);
+      else thought.textContent = "No reasoning text came with this call; the model went straight to the tool.";
+      await typeText(call, `${s.tool}(${argText(s.arguments)})`, ctx);
+      markCard(s.tool, s.status);
+    }
+
+    function onNode(n) {
+      state.nodes.set(n.id, { ...n });
+      drawTree(treeHost, state.nodes, state.seen, new Set());
+    }
+
+    function onBacktrack(b) {
+      const node = state.nodes.get(b.node);
+      if (node) node.status = b.reason === "dead_end" ? "dead_end" : "error";
+      (b.steps || []).forEach((i) => state.steps.get(i) && state.steps.get(i).classList.add("backtracked"));
+      timelineSkel.remove();
+      timeline.append(
+        h("li", { class: "tl-item backtrack" },
+          h("span", { class: "tl-dot" }, iconNode("branch")),
+          h("div", { class: "tl-body" },
+            h("div", { class: "tl-row" }, h("span", { class: "tl-lbl back" }, "Backtrack"), h("div", { class: "tl-text" }, `Branch #${b.node}: ${b.message || BACKTRACK_TEXT[b.reason] || "backtracking"}`))))
+      );
+      if (treeSec) drawTree(treeHost, state.nodes, state.seen, new Set());
+    }
+
+    async function onAnswer(a) {
+      if (strategy === "dfsdt") {
+        const open = [...state.nodes.values()].filter((n) => n.status === "open" && !n.tools.length).pop();
+        if (open) {
+          open.status = "answer";
+          drawTree(treeHost, state.nodes, state.seen, new Set());
+        }
+      }
+      answerCard.classList.remove("pending");
+      answerCard.classList.add("ready");
+      const body = h("div", { class: "answer-text" });
+      answerBody.replaceChildren(body);
+      await typeText(body, a.text, ctx);
+      body.replaceChildren(richText(a.text));
+    }
+
+    function onDone(run) {
+      state.run = run;
+      state.ended = true;
+      timelineSkel.remove();
+      stateText.textContent = run.final_answer ? "Done" : "Stopped without an answer";
+      el.classList.add("done");
+      run.steps.forEach((s) => {
+        const item = state.steps.get(s.index);
+        if (item) item.classList.toggle("backtracked", !!s.backtracked);
+      });
+      const called = new Set(run.tools_called);
+      state.cards.forEach((card, name) => {
+        if (!called.has(name) && !card.classList.contains("failed")) card.classList.add("unused");
+      });
+      if (!run.final_answer) {
+        answerCard.classList.remove("pending");
+        answerCard.classList.add("none");
+        answerBody.replaceChildren(h("p", null, `The agent stopped without an answer (${run.stop_reason.replace("_", " ")}).`));
+      }
+      vSteps.textContent = String(run.num_steps);
+      vCalls.textContent = String(run.num_tool_calls);
+      vLatency.textContent = fmtLatency(run.latency_ms);
+      vModel.textContent = run.model || "–";
+      if (run.tree && treeSec) {
+        state.nodes = new Map(run.tree.nodes.map((n) => [n.id, n]));
+        drawTree(treeHost, state.nodes, state.seen, new Set(run.tree.chosen_path));
+        metrics.append(h("div", { class: "metric" }, h("span", { class: "m-v" }, String(run.tree.explored)), h("span", { class: "m-l" }, "branches explored")));
+      }
+    }
+
+    function showError(err) {
+      if (state.ended) return;
+      state.ended = true;
+      state.error = err;
+      el.classList.add("failed");
+      stateText.textContent = err.code === "cancelled" ? "Cancelled" : "Failed";
+      el.querySelectorAll(".skel, .skel-group").forEach((s) => s.remove());
+      if (err.code === "cancelled") {
+        answerCard.classList.remove("pending");
+        answerCard.classList.add("none");
+        answerBody.replaceChildren(h("p", null, "You cancelled this run."));
+        return;
+      }
+      answerCard.replaceWith(errorCard(err, opts.onRecorded));
+    }
+
+    const handlers = { retrieved: onRetrieved, step: onStep, node: onNode, backtrack: onBacktrack, answer: onAnswer, done: onDone, error: showError };
+    return {
+      el,
+      state,
+      push(event, data) {
+        const fn = handlers[event];
+        if (fn) enqueue(() => (state.ended && event !== "done" ? null : fn(data)));
+      },
+      pace(ms) {
+        enqueue(() => (ctx.instant ? null : sleep(ms)));
+      },
+      hurry() {
+        ctx.instant = true;
+      },
+      fail(err) {
+        ctx.instant = true;
+        enqueue(() => showError(err));
+      },
+      settled: () => chain.then(() => state),
+    };
+  }
+
+  function errorCard(err, onRecorded) {
+    const offline = ["offline", "interrupted", "not_configured", "demo_limit"].includes(err.code);
+    return h("div", { class: "error-card", role: "alert" },
+      h("div", { class: "error-title" }, iconNode("x"), ERROR_TITLES[err.code] || "Something went wrong"),
+      h("p", null, err.message || "Please try again."),
+      offline && onRecorded ? h("button", { class: "btn btn-sm", type: "button", onclick: onRecorded }, iconNode("play"), "Watch the recorded demo") : null
+    );
+  }
+
+  // ---------------------------------------------------------------- transport
+
+  // Reads Server-Sent Events from a fetch response body.
+  async function readSSE(res, onEvent) {
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += value.replace(/\r\n/g, "\n");
+      let cut;
+      while ((cut = buffer.indexOf("\n\n")) >= 0) {
+        const block = buffer.slice(0, cut);
+        buffer = buffer.slice(cut + 2);
+        let event = "message", data = "";
+        block.split("\n").forEach((line) => {
+          if (line.startsWith("event:")) event = line.slice(6).trim();
+          else if (line.startsWith("data:")) data += line.slice(5).trim();
+        });
+        if (data) onEvent(event, JSON.parse(data));
+      }
+    }
+  }
+
+  async function errorFrom(res) {
+    try {
+      const body = await res.json();
+      if (body && body.error && body.error.message) return body.error;
+    } catch (e) { /* not JSON */ }
+    return { code: `http_${res.status}`, message: `The server answered with HTTP ${res.status}. Please try again.` };
+  }
+
+  const OFFLINE = { code: "offline", message: "The demo server could not be reached. Check that it is running, or watch the recorded demo." };
+
+  // Streams one live run into `panel`; falls back to POST /api/run when the
+  // browser cannot read a streamed response.
+  async function liveRun(base, params, panel, signal) {
+    const query = new URLSearchParams({ question: params.question, strategy: params.strategy, top_k: String(params.topK) });
+    let finished = false;
+    const forward = (event, data) => {
+      if (event === "done" || event === "error") finished = true;
+      panel.push(event, data);
+    };
+    try {
+      const canStream = "TextDecoderStream" in window && "body" in Response.prototype;
+      if (canStream) {
+        const res = await fetch(`${base}/api/run/stream?${query}`, { signal, headers: { Accept: "text/event-stream" } });
+        if (!res.ok) return panel.fail(await errorFrom(res));
+        if (res.body) {
+          await readSSE(res, forward);
+          if (!finished) panel.fail({ code: "interrupted", message: "The connection to the server closed before the run finished. Please try again." });
+          return;
+        }
+      }
+      const res = await fetch(`${base}/api/run`, {
+        method: "POST",
+        signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: params.question, strategy: params.strategy, top_k: params.topK }),
+      });
+      if (!res.ok) return panel.fail(await errorFrom(res));
+      runToEvents(await res.json()).forEach(([e, d]) => forward(e, d));
+    } catch (err) {
+      if (signal.aborted) return panel.fail({ code: "cancelled", message: "Cancelled." });
+      panel.fail(finished ? { code: "interrupted", message: "The connection dropped." } : OFFLINE);
+    }
+  }
+
+  async function recordedRun(run, panel, signal, instant) {
+    for (const [event, data] of runToEvents(run)) {
+      if (signal.aborted) return panel.fail({ code: "cancelled", message: "Cancelled." });
+      panel.push(event, data);
+      if (!instant) panel.pace(event === "retrieved" ? 700 : 450);
+    }
+  }
+
+  // ---------------------------------------------------------------- page
+
+  PAGES.demo = (main) => {
+    const T = C.demoPage;
+    const D = window.SITE_DEMO_RUNS || { questions: [], runs: [] };
+    const st = { base: "", mode: "checking", health: null, strategy: "react", running: null, history: [] };
+
+    const defaultBase = () => (/^https?:$/.test(location.protocol) ? location.origin : "http://localhost:8000");
+    const savedBase = () => {
+      try {
+        return localStorage.getItem(API_BASE_KEY) || "";
+      } catch (e) {
+        return "";
+      }
+    };
+    st.base = savedBase() || defaultBase();
+
+    main.innerHTML = `
+      <section class="page-hero demo-hero">
+        <div class="wrap">
+          <span class="kicker" data-reveal>${esc(T.kicker)}</span>
+          <h1 class="h-line" data-reveal style="--i:1">${fill(T.title)}</h1>
+          <p class="lead" data-reveal style="--i:2">${fill(T.intro)}</p>
+        </div>
+      </section>
+      <section class="section demo-section">
+        <div class="wrap">
+          <div class="card demo-console" data-reveal></div>
+          <div class="demo-notice" hidden></div>
+          <div class="demo-results" aria-live="polite"></div>
+          <div class="demo-summary" hidden></div>
+          <div class="card demo-history" hidden></div>
+        </div>
+      </section>`;
+
+    const consoleEl = $(".demo-console", main);
+    const notice = $(".demo-notice", main);
+    const results = $(".demo-results", main);
+    const summary = $(".demo-summary", main);
+    const historyEl = $(".demo-history", main);
+
+    // -- console
+    const statusPill = h("span", { class: "status-pill checking", role: "status" }, h("i"), h("span", null, "Checking backend…"));
+    const modeBadge = h("span", { class: "mode-badge checking" }, "…");
+    const input = h("textarea", { id: "demo-q", rows: "3", maxlength: String(MAX_CHARS), placeholder: T.placeholder, "aria-describedby": "demo-count" });
+    const counter = h("span", { id: "demo-count", class: "char-count" }, `0 / ${MAX_CHARS}`);
+    const examples = h("div", { class: "examples", role: "list", "aria-label": "Example questions" },
+      D.questions.map((q) => h("button", { class: "example-chip", type: "button", role: "listitem", onclick: () => {
+        input.value = q;
+        updateCount();
+        input.focus();
+      } }, q))
+    );
+    const strategyBtns = [["react", "ReAct"], ["dfsdt", "DFSDT"], ["compare", "Compare both"]].map(([value, label]) =>
+      h("button", { type: "button", class: "seg-btn", role: "radio", "aria-checked": String(value === st.strategy), "data-value": value, onclick: () => setStrategy(value) }, label)
+    );
+    const seg = h("div", { class: "seg", role: "radiogroup", "aria-label": "Agent strategy" }, strategyBtns);
+    const topK = h("input", { type: "range", min: "1", max: "10", value: "5", id: "demo-k", "aria-describedby": "demo-k-v" });
+    const topKValue = h("output", { id: "demo-k-v", for: "demo-k" }, "5");
+    const topKNote = h("span", { class: "k-note" });
+    const runBtn = h("button", { class: "btn btn-primary run-btn", type: "button" }, iconNode("play"), "Run");
+    const cancelBtn = h("button", { class: "btn cancel-btn", type: "button", hidden: true }, iconNode("stop"), "Cancel");
+    const baseInput = h("input", { type: "url", id: "demo-base", spellcheck: "false", autocomplete: "off", placeholder: defaultBase() });
+    baseInput.value = st.base;
+    const baseMsg = h("span", { class: "settings-msg", role: "status" });
+    const settings = h("details", { class: "demo-settings" },
+      h("summary", null, iconNode("gear"), "Settings"),
+      h("div", { class: "settings-body" },
+        h("label", { for: "demo-base" }, "API base URL"),
+        h("div", { class: "settings-row" }, baseInput,
+          h("button", { class: "btn btn-sm", type: "button", onclick: () => saveBase(baseInput.value) }, "Save"),
+          h("button", { class: "btn btn-sm", type: "button", onclick: () => saveBase("") }, "Reset")),
+        h("p", { class: "settings-note" }, "Where the demo server runs, e.g. http://localhost:8000. Saved in this browser only."),
+        baseMsg)
+    );
+
+    consoleEl.append(
+      h("div", { class: "console-top" }, statusPill, modeBadge, settings),
+      h("label", { class: "sr-only", for: "demo-q" }, "Your question"),
+      h("div", { class: "q-wrap" }, input, counter),
+      examples,
+      h("div", { class: "controls" },
+        h("div", { class: "control" }, h("span", { class: "control-lbl" }, "Strategy"), seg),
+        h("div", { class: "control" }, h("label", { class: "control-lbl", for: "demo-k" }, "APIs to retrieve (top-k)"), h("div", { class: "k-row" }, topK, topKValue), topKNote),
+        h("div", { class: "control run-ctl" }, runBtn, cancelBtn))
+    );
+
+    function updateCount() {
+      counter.textContent = `${input.value.length} / ${MAX_CHARS}`;
+      counter.classList.toggle("near", input.value.length > MAX_CHARS - 30);
+    }
+    input.addEventListener("input", updateCount);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        run();
+      }
+    });
+    topK.addEventListener("input", () => (topKValue.textContent = topK.value));
+    runBtn.addEventListener("click", () => run());
+    cancelBtn.addEventListener("click", () => st.running && st.running.abort());
+
+    function setStrategy(value) {
+      st.strategy = value;
+      strategyBtns.forEach((b) => b.setAttribute("aria-checked", String(b.dataset.value === value)));
+    }
+    seg.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      const i = strategyBtns.findIndex((b) => b.dataset.value === st.strategy);
+      const next = strategyBtns[(i + (e.key === "ArrowRight" ? 1 : strategyBtns.length - 1)) % strategyBtns.length];
+      setStrategy(next.dataset.value);
+      next.focus();
+    });
+
+    // -- backend status and mode
+    function setMode(mode) {
+      st.mode = mode;
+      modeBadge.className = `mode-badge ${mode}`;
+      modeBadge.textContent = mode === "live" ? "Live" : mode === "recorded" ? "Recorded demo" : "…";
+      modeBadge.title = mode === "live" ? "Questions are answered live by the running server" : "Replays runs recorded earlier; nothing here is live";
+      const recorded = mode === "recorded";
+      topK.disabled = recorded;
+      topKNote.textContent = recorded ? "Recorded runs used top-k = 5." : "";
+      if (recorded) {
+        topK.value = "5";
+        topKValue.textContent = "5";
+      }
+      notice.hidden = !recorded;
+      notice.replaceChildren();
+      if (recorded) {
+        notice.className = "demo-notice";
+        const why = st.health && !st.health.live ? T.noKeyNote : T.recordedNote;
+        notice.append(h("span", { class: "mode-badge recorded" }, "Recorded demo"), h("p", null, why));
+      }
+    }
+
+    async function checkHealth() {
+      statusPill.className = "status-pill checking";
+      statusPill.lastChild.textContent = "Checking backend…";
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 4000);
+      try {
+        const res = await fetch(`${st.base}/api/health`, { signal: ctrl.signal, cache: "no-store" });
+        const data = res.ok ? await res.json() : null;
+        if (!data || data.status !== "ok") throw new Error("unhealthy");
+        st.health = data;
+        statusPill.className = `status-pill ${data.live ? "online" : "partial"}`;
+        statusPill.lastChild.textContent = data.live ? `Backend online · ${data.model}` : "Backend online · no model key";
+        if (!st.running) setMode(data.live ? "live" : "recorded");
+      } catch (e) {
+        st.health = null;
+        statusPill.className = "status-pill offline";
+        statusPill.lastChild.textContent = "Backend offline";
+        if (!st.running) setMode("recorded");
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    function saveBase(value) {
+      const v = value.trim().replace(/\/+$/, "");
+      if (v && !/^https?:\/\/[^\s/]+/i.test(v)) {
+        baseMsg.textContent = "Enter a full http:// or https:// address.";
+        return;
+      }
+      try {
+        if (v) localStorage.setItem(API_BASE_KEY, v);
+        else localStorage.removeItem(API_BASE_KEY);
+      } catch (e) { /* storage blocked: use it for this visit only */ }
+      st.base = v || defaultBase();
+      baseInput.value = st.base;
+      baseMsg.textContent = v ? "Saved. Checking the server…" : "Reset to the default. Checking the server…";
+      checkHealth().then(() => (baseMsg.textContent = st.health ? "Connected." : "Not reachable; using the recorded demo."));
+    }
+
+    // -- running
+    const findRecorded = (q, strategy) =>
+      D.runs.find((r) => r.strategy === strategy && r.question.trim().toLowerCase() === q.trim().toLowerCase());
+
+    function showNotice(kind, text, extra) {
+      results.replaceChildren(h("div", { class: `card info-card ${kind}` }, h("p", null, text), extra || null));
+    }
+
+    function recordedChoices() {
+      return h("div", { class: "examples" }, D.questions.map((q) => h("button", { class: "example-chip", type: "button", onclick: () => {
+        input.value = q;
+        updateCount();
+        run();
+      } }, q)));
+    }
+
+    async function run(fromHistory) {
+      if (st.running) return;
+      const question = fromHistory ? fromHistory.question : input.value.trim();
+      if (!question) {
+        showNotice("warn", "Type a question first, or pick one of the examples.");
+        input.focus();
+        return;
+      }
+      if (question.length > MAX_CHARS) {
+        showNotice("warn", `Questions are limited to ${MAX_CHARS} characters.`);
+        return;
+      }
+      const strategy = fromHistory ? fromHistory.strategy : st.strategy;
+      const strategies = strategy === "compare" ? ["react", "dfsdt"] : [strategy];
+      const mode = fromHistory ? fromHistory.mode : st.mode === "live" ? "live" : "recorded";
+      const recorded = mode === "recorded" && !fromHistory ? strategies.map((s) => findRecorded(question, s)) : null;
+      if (recorded && recorded.some((r) => !r)) {
+        showNotice("warn", T.recordedOnly, recordedChoices());
+        return;
+      }
+
+      const ctrl = new AbortController();
+      st.running = ctrl;
+      runBtn.disabled = true;
+      cancelBtn.hidden = false;
+      summary.hidden = true;
+      const params = { question, topK: +topK.value };
+      const grid = h("div", { class: `run-grid${strategies.length > 1 ? " compare" : ""}` });
+      results.replaceChildren(
+        h("div", { class: "asked" }, h("span", { class: "asked-lbl" }, "Question"), h("q", null, question),
+          h("span", { class: `mode-badge ${mode}` }, mode === "live" ? "Live" : "Recorded demo")),
+        grid
+      );
+      if (!fromHistory) results.scrollIntoView({ behavior: reduce() ? "auto" : "smooth", block: "start" });
+
+      const panels = strategies.map((s, i) => {
+        const rec = fromHistory ? fromHistory.runs[i] : recorded && recorded[i];
+        return createPanel(grid, s, {
+          recorded: mode === "recorded" ? (rec && rec.recorded_at ? rec.recorded_at.slice(0, 10) : "run") : null,
+          topK: params.topK,
+          instant: !!fromHistory,
+          onRecorded: () => {
+            setMode("recorded");
+            if (findRecorded(question, s)) run();
+            else showNotice("warn", T.recordedOnly, recordedChoices());
+          },
+        });
+      });
+      ctrl.signal.addEventListener("abort", () => panels.forEach((p) => p.hurry()));
+
+      await Promise.all(panels.map((panel, i) => {
+        const s = strategies[i];
+        if (fromHistory) {
+          const saved = fromHistory.runs[i];
+          if (saved) return recordedRun(saved, panel, ctrl.signal, true);
+          panel.fail(fromHistory.errors[i] || { code: "unknown", message: "This run did not finish." });
+          return null;
+        }
+        if (mode === "recorded") return recordedRun(recorded[i], panel, ctrl.signal, false);
+        return liveRun(st.base, { ...params, strategy: s }, panel, ctrl.signal);
+      }));
+      const states = await Promise.all(panels.map((p) => p.settled()));
+
+      st.running = null;
+      runBtn.disabled = false;
+      cancelBtn.hidden = true;
+      const runs = states.map((s) => s.run);
+      if (runs.length === 2 && runs[0] && runs[1]) showSummary(runs[0], runs[1]);
+      if (!fromHistory) {
+        addHistory({ question, strategy, mode, runs, errors: states.map((s) => s.error), when: new Date() });
+        if (mode === "live" && states.some((s) => s.error && s.error.code === "offline")) checkHealth();
+      }
+    }
+
+    // -- compare summary
+    function showSummary(react, dfsdt) {
+      const points = [];
+      const okCalls = (r) => r.steps.filter((s) => s.status === "ok").length;
+      const failed = (r) => r.steps.filter((s) => s.status === "error").length;
+      if (!!react.final_answer !== !!dfsdt.final_answer) {
+        points.push(`${react.final_answer ? "Only ReAct" : "Only DFSDT"} reached an answer.`);
+      } else if (!react.final_answer) points.push("Neither strategy reached an answer.");
+      points.push(react.num_tool_calls === dfsdt.num_tool_calls
+        ? `Both made ${react.num_tool_calls} tool call${react.num_tool_calls === 1 ? "" : "s"}.`
+        : `ReAct made ${react.num_tool_calls} tool call${react.num_tool_calls === 1 ? "" : "s"}, DFSDT made ${dfsdt.num_tool_calls}.`);
+      const a = new Set(react.tools_called), b = new Set(dfsdt.tools_called);
+      const onlyA = [...a].filter((t) => !b.has(t)), onlyB = [...b].filter((t) => !a.has(t));
+      if (!onlyA.length && !onlyB.length) points.push(a.size ? `They used the same tools: ${[...a].join(", ")}.` : "Neither used a tool.");
+      else {
+        if (onlyA.length) points.push(`Only ReAct used ${onlyA.join(", ")}.`);
+        if (onlyB.length) points.push(`Only DFSDT used ${onlyB.join(", ")}.`);
+      }
+      const backtracks = dfsdt.tree ? dfsdt.tree.nodes.filter((n) => n.status === "error" || n.status === "dead_end").length : 0;
+      points.push(backtracks
+        ? `DFSDT backtracked ${backtracks} time${backtracks === 1 ? "" : "s"} over ${dfsdt.tree.explored} explored branches.`
+        : "DFSDT never had to backtrack, so it followed a single path like ReAct.");
+      if (failed(react)) points.push(`ReAct had ${failed(react)} failed call${failed(react) === 1 ? "" : "s"} and retried in place.`);
+      const diff = react.latency_ms - dfsdt.latency_ms;
+      if (Math.abs(diff) >= 300) points.push(`${diff > 0 ? "DFSDT" : "ReAct"} finished ${fmtLatency(Math.abs(diff))} sooner.`);
+      else points.push("They took about the same time.");
+      if (okCalls(react) && okCalls(dfsdt) && react.final_answer && dfsdt.final_answer && react.final_answer.trim() === dfsdt.final_answer.trim()) {
+        points.push("Their answers are word for word the same.");
+      }
+      summary.replaceChildren(h("div", { class: "card summary-card" },
+        h("h3", null, iconNode("chart"), "Where they differ"),
+        h("ul", null, points.map((p) => h("li", null, p)))));
+      summary.hidden = false;
+    }
+
+    // -- history (this page visit only)
+    function addHistory(entry) {
+      st.history.unshift(entry);
+      st.history = st.history.slice(0, 5);
+      historyEl.hidden = false;
+      historyEl.replaceChildren(
+        h("h3", null, iconNode("history"), "Recent questions"),
+        h("ol", { class: "history-list" }, st.history.map((e) => {
+          const ok = e.runs.every(Boolean);
+          const answer = e.runs.find((r) => r && r.final_answer);
+          return h("li", null, h("button", { class: "history-item", type: "button", onclick: () => {
+            if (st.running) return;
+            input.value = e.question;
+            updateCount();
+            run(e);
+          } },
+            h("span", { class: "h-q" }, e.question),
+            h("span", { class: "h-meta" },
+              `${e.strategy === "compare" ? "Compare" : STRATEGY_LABEL[e.strategy]} · ${e.mode === "live" ? "Live" : "Recorded"} · ${e.when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}${ok ? "" : " · failed"}`),
+            answer ? h("span", { class: "h-a" }, clip(answer.final_answer.replace(/\*\*/g, "").replace(/\s+/g, " "), 120)) : null));
+        })),
+        h("p", { class: "settings-note" }, "Kept for this visit only. Click one to show its results again.")
+      );
+    }
+
+    setMode("checking");
+    checkHealth();
+    setInterval(() => {
+      if (!st.running && !document.hidden) checkHealth();
+    }, 30000);
   };
 
   // @pages

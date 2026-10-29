@@ -13,7 +13,7 @@ window.SITE_CONTENT = {
     { href: "results.html", label: "Results" },
     { href: "team.html", label: "Team" },
   ],
-  demo: { href: "results.html#demo", label: "Demo" },
+  demo: { href: "demo.html", label: "Demo" },
   team: [
     { name: "Ayush Mathur", id: "202411013", role: null },
     { name: "Rudra Mandloi", id: "202411082", role: null },
@@ -29,7 +29,7 @@ window.SITE_CONTENT = {
     subtitle:
       "An agent that picks APIs for a question, calls them through native function calling, and is graded on a benchmark with expected answers.",
     ctas: [
-      { href: "results.html#demo", label: "View demo", primary: true },
+      { href: "demo.html", label: "Try the demo", primary: true },
       { href: "results.html", label: "See the results" },
     ],
     screens: {
@@ -269,6 +269,16 @@ window.SITE_CONTENT = {
     videoTitle: "Demo [[video]]",
     video: { src: "assets/video/demo.mp4", poster: "assets/screenshots/app-run-agent.webp" },
     videoMissing: "Demo video coming soon. Save it as site/assets/video/demo.mp4 and it will play here.",
+  },
+
+  demoPage: {
+    kicker: "Demo",
+    title: "Ask the [[agent]]",
+    intro: "Type a question and watch the agent pick APIs, call them for real and reason its way to an answer.",
+    placeholder: "Ask something that needs live data, e.g. How high is Lisbon above sea level, in feet?",
+    recordedNote: "No demo server is reachable from this page, so it replays runs recorded earlier with the same code. These answers are not live.",
+    recordedOnly: "The recorded demo can only replay the saved example questions. To ask your own question, start the server (see DEMO.md) and enter its address under Settings.",
+    noKeyNote: "The server is online but has no model key, so the page replays recorded runs instead.",
   },
 
   teamPage: {
