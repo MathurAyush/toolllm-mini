@@ -353,6 +353,23 @@ def test_live_request_parses_like_the_mock(api_cls):
         assert get.call_args.kwargs["timeout"] == api_cls.timeout
 
 
+@pytest.mark.parametrize(
+    "api_cls, args, prefix",
+    [
+        (PokemonAPI, {"pokemon": "../../users"}, "https://pokeapi.co/api/v2/pokemon/"),
+        (GitHubUserAPI, {"username": "a/../../repos"}, "https://api.github.com/users/"),
+    ],
+)
+def test_path_arguments_cannot_leave_the_endpoint(api_cls, args, prefix):
+    """A model-chosen argument in the URL path is one escaped segment, so
+    it cannot point the request at another path."""
+    with patch("apis.http.requests.get", return_value=_response(api_cls.mock_payload)) as get:
+        api_cls(offline=False).call(**args)
+    url = get.call_args.args[0]
+    assert url.startswith(prefix)
+    assert "/" not in url[len(prefix):]
+
+
 def test_offline_env_var_serves_the_mock(monkeypatch):
     monkeypatch.setenv(OFFLINE_ENV, "1")
     with patch("apis.http.requests.get") as get:

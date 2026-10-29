@@ -221,7 +221,7 @@ class ZipCodeAPI(PublicAPI):
     }
 
     def fetch(self, postal_code, country_code):
-        return self.get_json(f"https://api.zippopotam.us/{quote(country_code.lower())}/{quote(postal_code)}")
+        return self.get_json(f"https://api.zippopotam.us/{quote(country_code.lower(), safe='')}/{quote(postal_code, safe='')}")
 
     def parse(self, payload, postal_code, country_code):
         return {
@@ -276,7 +276,7 @@ class IPGeolocationAPI(PublicAPI):
     }
 
     def fetch(self, ip):
-        return self.get_json(f"https://ipwho.is/{quote(ip)}")
+        return self.get_json(f"https://ipwho.is/{quote(ip, safe='')}")
 
     def parse(self, payload, ip):
         if not payload.get("success", False):

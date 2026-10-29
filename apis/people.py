@@ -225,7 +225,7 @@ class GitHubUserAPI(PublicAPI):
         token = self.api_key()
         if token:
             headers["Authorization"] = f"Bearer {token}"
-        return self.get_json(f"https://api.github.com/users/{quote(username.strip().lstrip('@'))}", headers=headers)
+        return self.get_json(f"https://api.github.com/users/{quote(username.strip().lstrip('@'), safe='')}", headers=headers)
 
     def parse(self, payload, username):
         return {

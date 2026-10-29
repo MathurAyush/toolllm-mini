@@ -131,7 +131,7 @@ class PokemonAPI(PublicAPI):
     }
 
     def fetch(self, pokemon):
-        return self.get_json(f"https://pokeapi.co/api/v2/pokemon/{quote(pokemon.strip().lower())}")
+        return self.get_json(f"https://pokeapi.co/api/v2/pokemon/{quote(pokemon.strip().lower(), safe='')}")
 
     def parse(self, payload, pokemon):
         return {

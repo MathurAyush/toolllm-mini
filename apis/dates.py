@@ -135,7 +135,7 @@ class PublicHolidaysAPI(PublicAPI):
     ]
 
     def fetch(self, country_code, year):
-        return self.get_json(f"https://date.nager.at/api/v3/PublicHolidays/{_year(year)}/{quote(country_code.upper())}")
+        return self.get_json(f"https://date.nager.at/api/v3/PublicHolidays/{_year(year)}/{quote(country_code.upper(), safe='')}")
 
     def parse(self, payload, country_code, year):
         return {
@@ -169,7 +169,7 @@ class LongWeekendsAPI(PublicAPI):
     ]
 
     def fetch(self, country_code, year):
-        return self.get_json(f"https://date.nager.at/api/v3/LongWeekend/{_year(year)}/{quote(country_code.upper())}")
+        return self.get_json(f"https://date.nager.at/api/v3/LongWeekend/{_year(year)}/{quote(country_code.upper(), safe='')}")
 
     def parse(self, payload, country_code, year):
         return [
