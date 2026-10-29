@@ -340,6 +340,23 @@ def test_cors_allows_local_and_site_origins_only():
     assert "access-control-allow-origin" not in other.headers
 
 
+def test_published_site_may_reach_a_local_server():
+    client, _ = make_client([])
+    preflight = {
+        "Origin": "https://mathurayush.github.io",
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Private-Network": "true",
+    }
+
+    res = client.options("/api/health", headers=preflight)
+    other = client.options("/api/health", headers={**preflight, "Origin": "https://evil.example"})
+
+    assert res.status_code == 200
+    assert res.headers["access-control-allow-private-network"] == "true"
+    assert res.headers["access-control-allow-origin"] == "https://mathurayush.github.io"
+    assert "access-control-allow-origin" not in other.headers
+
+
 def test_default_app_serves_the_site():
     from server.app import app
 

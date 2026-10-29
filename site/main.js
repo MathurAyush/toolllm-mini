@@ -2063,7 +2063,8 @@
     // Live by default. Recorded replay is only ever turned on by the user.
     const st = { base: "", mode: "live", recorded: false, online: null, health: null, checking: false, strategy: "react", running: null, history: [] };
 
-    const defaultBase = () => (/^https?:$/.test(location.protocol) ? location.origin : "http://localhost:8000");
+    const LOCAL_SERVER = "http://localhost:8000";
+    const defaultBase = () => (/^https?:$/.test(location.protocol) ? location.origin : LOCAL_SERVER);
     const savedBase = () => {
       try {
         return localStorage.getItem(API_BASE_KEY) || "";
@@ -2181,8 +2182,17 @@
 
     // -- backend status and mode
     const liveReady = () => !!(st.online && st.health && st.health.live);
-    // Opened as a file, or from a port the demo server does not answer on.
-    const wrongPlace = () => location.protocol === "file:" || (st.online === false && location.port !== "8000");
+    // Opened as a file: browsers block it from talking to any server.
+    const wrongPlace = () => location.protocol === "file:";
+    // Servers to try, in order. Without a saved address: the page's own
+    // server, then the one start_demo.bat runs on this computer, so the
+    // published site goes live too while that server is running.
+    const candidates = () => {
+      const saved = savedBase();
+      if (saved) return [saved];
+      const own = defaultBase();
+      return own === LOCAL_SERVER ? [own] : [own, LOCAL_SERVER];
+    };
 
     function banner(kind, title, text) {
       return h("div", { class: `demo-banner ${kind}`, role: "alert" },
@@ -2228,26 +2238,37 @@
     async function checkHealth() {
       if (st.checking) return;
       st.checking = true;
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 2500);
-      try {
-        const res = await fetch(`${st.base}/api/health`, { signal: ctrl.signal, cache: "no-store" });
-        const data = res.ok ? await res.json() : null;
-        if (!data || data.status !== "ok") throw new Error("unhealthy");
+      let found = null;
+      for (const base of candidates()) {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 2500);
+        try {
+          const res = await fetch(`${base}/api/health`, { signal: ctrl.signal, cache: "no-store" });
+          const data = res.ok ? await res.json() : null;
+          if (data && data.status === "ok") {
+            found = { base, data };
+            break;
+          }
+        } catch (e) { /* not reachable: try the next one */ }
+        finally {
+          clearTimeout(timer);
+        }
+      }
+      if (found) {
         st.online = true;
-        st.health = data;
-        statusPill.className = `status-pill ${data.live ? "online" : "partial"}`;
-        statusPill.lastChild.textContent = data.live ? `Backend online · ${data.model}` : "Backend online · no model key";
-      } catch (e) {
+        st.base = found.base;
+        st.health = found.data;
+        statusPill.className = `status-pill ${found.data.live ? "online" : "partial"}`;
+        statusPill.lastChild.textContent = found.data.live ? `Backend online · ${found.data.model}` : "Backend online · no model key";
+        if (document.activeElement !== baseInput) baseInput.value = st.base;
+      } else {
         st.online = false;
         st.health = null;
         statusPill.className = "status-pill offline";
         statusPill.lastChild.textContent = "Backend offline";
-      } finally {
-        clearTimeout(timer);
-        st.checking = false;
-        render();
       }
+      st.checking = false;
+      render();
     }
 
     function saveBase(value) {

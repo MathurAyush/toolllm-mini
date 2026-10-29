@@ -154,6 +154,9 @@ def create_app(
         allow_origin_regex=_LOCAL_ORIGIN,
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type"],
+        # Lets the published site (a public origin) reach a server running on
+        # the visitor's own computer, which browsers otherwise block.
+        allow_private_network=True,
     )
 
     @app.exception_handler(DemoError)

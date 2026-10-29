@@ -279,12 +279,12 @@ window.SITE_CONTENT = {
     recordedNote: "You turned on the recorded demo: the page replays runs recorded earlier with the same code. These answers are not live. Turn the switch off to ask the server.",
     recordedOnly: "The recorded demo only has the example questions below. Turn off “Use recorded demo” to ask your own question live.",
     offlineTitle: "Backend offline: double-click start_demo.bat",
-    offlineText: "Keep its black window open. This page checks every 3 seconds and goes live by itself, no reload needed. You can keep typing your question meanwhile.",
+    offlineText: "Live answers come from the demo server on your computer. Start it and keep its black window open: this page looks for it at http://localhost:8000 every 3 seconds and goes live by itself, no reload needed. If the browser asks to allow access to devices on your local network, click Allow.",
     offlineRecorded: "The recorded demo still works. Double-click start_demo.bat to ask questions live.",
     noKeyTitle: "Backend online, but it has no Gemini key",
     noKeyText: "Put your key after GEMINI_API_KEY= in the .env file, then close the server window and double-click start_demo.bat again.",
     originTitle: "Open the demo at http://localhost:8000/demo.html",
-    originText: "This copy of the page is not served by the demo server, so it cannot ask live questions. Start start_demo.bat; it opens the right address for you.",
+    originText: "This page was opened as a file, and browsers do not let a file talk to the demo server. Start start_demo.bat; it opens the right address for you.",
   },
 
   teamPage: {
