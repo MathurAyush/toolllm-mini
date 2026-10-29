@@ -59,9 +59,17 @@ key" and a red banner explaining how to add it.
 
 ## GitHub Pages and hosting
 
-GitHub Pages only serves static files, so on the published site live mode shows
-the "Backend offline" banner, and visitors can only turn on the **recorded**
-demo by hand. For live answers the server has to run somewhere:
+GitHub Pages only serves static files, so it cannot run the agent itself. The
+published demo page instead looks for a demo server on the visitor's own
+computer at `http://localhost:8000`: while `start_demo.bat` is running, the
+GitHub Pages copy goes live too. Chrome asks once whether the site may access
+devices on your local network; click **Allow**. (If it was blocked, the page
+says so: open Site settings from the icon left of the address bar and set
+Local network access to Allow.) Without a local server, the page shows the
+"Backend offline" banner, and visitors can turn on the **recorded** demo by
+hand.
+
+For live answers for every visitor, the server has to run somewhere public:
 
 - locally, with the command above, or
 - on a host such as Render or Railway, with the start command

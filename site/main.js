@@ -2187,12 +2187,24 @@
     // Servers to try, in order. Without a saved address: the page's own
     // server, then the one start_demo.bat runs on this computer, so the
     // published site goes live too while that server is running.
+    const notApi = new Set(); // origins that answered 404: static hosting only
     const candidates = () => {
       const saved = savedBase();
       if (saved) return [saved];
       const own = defaultBase();
-      return own === LOCAL_SERVER ? [own] : [own, LOCAL_SERVER];
+      return (own === LOCAL_SERVER ? [own] : [own, LOCAL_SERVER]).filter((b) => !notApi.has(b));
     };
+    // Chrome asks before a public site may reach this computer; once the
+    // visitor blocks it, every request fails until they allow it again.
+    async function localAccessDenied() {
+      if (!navigator.permissions || /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) return false;
+      for (const name of ["loopback-network", "local-network-access"]) {
+        try {
+          return (await navigator.permissions.query({ name })).state === "denied";
+        } catch (e) { /* not known to this browser */ }
+      }
+      return false;
+    }
 
     function banner(kind, title, text) {
       return h("div", { class: `demo-banner ${kind}`, role: "alert" },
@@ -2219,7 +2231,8 @@
       if (recorded) notice.append(h("span", { class: "mode-badge recorded" }, "Recorded demo"), h("p", null, T.recordedNote));
 
       const shown = [];
-      if (st.online === false) shown.push(banner("error", T.offlineTitle, recorded ? T.offlineRecorded : T.offlineText));
+      if (st.online === false && st.blocked) shown.push(banner("error", T.blockedTitle, T.blockedText));
+      else if (st.online === false) shown.push(banner("error", T.offlineTitle, recorded ? T.offlineRecorded : T.offlineText));
       else if (st.online && !st.health.live) shown.push(banner("error", T.noKeyTitle, T.noKeyText));
       if (wrongPlace()) shown.push(banner("warn", T.originTitle, T.originText));
       banners.replaceChildren(...shown);
@@ -2244,6 +2257,7 @@
         const timer = setTimeout(() => ctrl.abort(), 2500);
         try {
           const res = await fetch(`${base}/api/health`, { signal: ctrl.signal, cache: "no-store" });
+          if (res.status === 404 && base !== LOCAL_SERVER && !savedBase()) notApi.add(base);
           const data = res.ok ? await res.json() : null;
           if (data && data.status === "ok") {
             found = { base, data };
@@ -2264,6 +2278,7 @@
       } else {
         st.online = false;
         st.health = null;
+        st.blocked = await localAccessDenied();
         statusPill.className = "status-pill offline";
         statusPill.lastChild.textContent = "Backend offline";
       }

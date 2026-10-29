@@ -280,6 +280,8 @@ window.SITE_CONTENT = {
     recordedOnly: "The recorded demo only has the example questions below. Turn off “Use recorded demo” to ask your own question live.",
     offlineTitle: "Backend offline: double-click start_demo.bat",
     offlineText: "Live answers come from the demo server on your computer. Start it and keep its black window open: this page looks for it at http://localhost:8000 every 3 seconds and goes live by itself, no reload needed. If the browser asks to allow access to devices on your local network, click Allow.",
+    blockedTitle: "Your browser is blocking the connection to the demo server",
+    blockedText: "This page was refused access to your local network. Click the icon at the left of the address bar, open Site settings, set Local network access to Allow, then reload the page.",
     offlineRecorded: "The recorded demo still works. Double-click start_demo.bat to ask questions live.",
     noKeyTitle: "Backend online, but it has no Gemini key",
     noKeyText: "Put your key after GEMINI_API_KEY= in the .env file, then close the server window and double-click start_demo.bat again.",
